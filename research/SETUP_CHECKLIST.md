@@ -4,12 +4,21 @@ Setup tasks that must be completed **once** before spinning out experiment agent
 
 ## Status
 
-- [ ] **W&B Configuration** - Project created, API key available
-- [ ] **Environment** - uv sync works, all dependencies install
-- [ ] **Models Downloaded** - Qwen2.5-VL, LTX-Video cached locally
-- [ ] **Datasets** - At least one dataset accessible for initial experiments
-- [ ] **Hardware Verified** - GPU available, VRAM confirmed
-- [ ] **Experiment Directories** - Created with proper structure
+- [x] **W&B Configuration** - Project created, API key configured
+- [x] **Environment** - uv sync works, all dependencies install
+- [x] **Modal Setup** - GPU infrastructure ready, smoke test passed
+- [x] **Models Downloaded** - Qwen2.5-VL (8.3B params), LTX-Video cached
+- [x] **Datasets** - Synthetic test data available, SSv2 instructions provided
+- [x] **Hardware Verified** - A100 40GB confirmed via Modal
+- [x] **Experiment Directories** - Created with proper structure
+- [x] **Validation Harness** - Experiment runner tested with stub mode
+- [x] **Agent Guide** - `research/AGENT_GUIDE.md` created for experiment agents
+- [x] **Handler Infrastructure** - Example handlers in `infra/modal/handlers/c1/`
+
+### Dataset Download Command
+```bash
+uv run modal run infra/modal/app.py::download_datasets
+```
 
 ---
 

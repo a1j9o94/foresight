@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+body {
+  background-color: #f9fafb;
+  color: #111827;
+  min-height: 100vh;
+  margin: 0;
+}
+
+.prose h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; }
+.prose h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.75rem; margin-top: 1.5rem; }
+.prose h3 { font-size: 1.125rem; font-weight: 500; margin-bottom: 0.5rem; margin-top: 1rem; }
+.prose p { margin-bottom: 0.75rem; }
+.prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+.prose ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+.prose li { margin-bottom: 0.25rem; }
+.prose code { background-color: #f3f4f6; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-size: 0.875rem; font-family: monospace; }
+.prose pre { background-color: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 1rem; }
+.prose table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+.prose th { background-color: #f3f4f6; border: 1px solid #d1d5db; padding: 0.5rem 0.75rem; text-align: left; font-weight: 600; }
+.prose td { border: 1px solid #d1d5db; padding: 0.5rem 0.75rem; }
+.prose a { color: #2563eb; }
+.prose a:hover { text-decoration: underline; }
+.prose blockquote { border-left: 4px solid #d1d5db; padding-left: 1rem; font-style: italic; color: #4b5563; }

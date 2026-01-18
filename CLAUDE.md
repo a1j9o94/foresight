@@ -2,6 +2,29 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## For Experiment Agents
+
+**If you're assigned to run an experiment, start here:**
+
+1. Read the **[Agent Guide](research/AGENT_GUIDE.md)** - explains how to implement and run experiments
+2. Find your experiment plan in `research/experiments/<experiment-id>.md`
+3. Implement handlers in `infra/modal/handlers/<experiment>/`
+4. **After completing:** Update these files:
+   - `research/experiments/<experiment-id>/results.yaml` - Detailed metrics
+   - `research/experiments/<experiment-id>/FINDINGS.md` - Plain-language findings for your experiment
+   - `research/FINDINGS.md` - Update the summary with your key results
+
+Quick commands:
+```bash
+# Test infrastructure with stub mode
+uv run modal run infra/modal/app.py::run_experiment --experiment-id c1-vlm-latent-sufficiency --stub-mode
+
+# Run your experiment
+uv run modal run infra/modal/app.py::run_experiment --experiment-id c1-vlm-latent-sufficiency
+```
+
+---
+
 ## Project Overview
 
 **Visualize** is a research prototype exploring whether AI systems can benefit from generating pixel-level video predictions as part of their reasoning process. The core hypothesis: an AI that can "see" predicted outcomes will make better decisions than one reasoning purely in text.

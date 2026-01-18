@@ -47,7 +47,10 @@ This downloads:
 ### 4. Run an Experiment
 
 ```bash
-# Run full experiment
+# Test the harness with stub handlers (no real GPU work)
+modal run infra/modal/app.py::run_experiment --experiment-id c1-vlm-latent-sufficiency --stub-mode
+
+# Run full experiment (once handlers are implemented)
 modal run infra/modal/app.py::run_experiment --experiment-id c1-vlm-latent-sufficiency
 
 # Run specific sub-experiment
@@ -58,6 +61,73 @@ modal run infra/modal/app.py::run_experiment --experiment-id c1-vlm-latent-suffi
 
 ```bash
 modal run infra/modal/app.py::list_results
+```
+
+## Experiment Runner Architecture
+
+The experiment runner (`infra/modal/runner/`) provides a structured framework for running experiments:
+
+### Components
+
+- **`config.py`**: Experiment configuration and registry
+- **`results.py`**: `ResultsWriter` class for standardized YAML output
+- **`runner.py`**: `ExperimentRunner` orchestrator with W&B integration
+
+### Implementing a New Experiment Handler
+
+Each sub-experiment needs a handler function:
+
+```python
+def e1_1_latent_visualization(runner: ExperimentRunner) -> dict:
+    """Run latent space visualization sub-experiment."""
+
+    # Your experiment code here
+    # Use runner.log_metrics() for incremental logging
+    # Use runner.results.get_artifact_path() for saving files
+
+    return {
+        "finding": "Latents show clear semantic clustering",
+        "metrics": {
+            "silhouette_score": 0.72,
+        },
+        "artifacts": [
+            runner.results.save_artifact("tsne_plot.png", plot_bytes),
+        ],
+    }
+```
+
+Register handlers in the experiment runner:
+
+```python
+runner = ExperimentRunner("c1-vlm-latent-sufficiency")
+runner.register_handler("e1_1", e1_1_latent_visualization)
+runner.run_all()
+```
+
+### Results Format
+
+Results are saved to `/results/<experiment-id>/results.yaml`:
+
+```yaml
+experiment_id: c1-vlm-latent-sufficiency
+status: completed
+success_criteria:
+  lpips_threshold: 0.35
+  ssim_threshold: 0.75
+results:
+  experiments:
+    e1_1:
+      status: completed
+      finding: "Latents show clear semantic clustering"
+      metrics:
+        silhouette_score: 0.72
+      artifacts:
+        - artifacts/tsne_plot.png
+assessment:
+  success_criteria_met: true
+  lpips_achieved: 0.31
+  confidence: high
+recommendation: proceed
 ```
 
 ## GPU Options
