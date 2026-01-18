@@ -10,6 +10,8 @@ dependencies = [
     "foresight-training",
     "foresight-inference",
     "foresight-eval",
+    "modal>=1.3.0.post1",
+    "wandb>=0.24.0",
 ]
 
 [tool.uv]
