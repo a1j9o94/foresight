@@ -1,23 +1,31 @@
 #!/bin/bash
 # Sync experiment results from Modal volume to local research/experiments directory
 # Run this after experiments complete on Modal to get latest results locally
+#
+# NOTE: Experiment IDs are loaded from research/research_plan.yaml
+# (single source of truth for all experiment configuration)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-EXPERIMENTS=(
-  "c1-vlm-latent-sufficiency"
-  "q1-latent-alignment"
-  "q2-information-preservation"
-  "c2-adapter-bridging"
-  "q3-temporal-coherence"
-  "c3-future-prediction"
-  "q4-training-data"
-  "q5-prediction-horizon"
-  "c4-pixel-verification"
-)
+# Load experiment IDs from research_plan.yaml (single source of truth)
+RESEARCH_PLAN="$PROJECT_ROOT/research/research_plan.yaml"
+
+if [ ! -f "$RESEARCH_PLAN" ]; then
+  echo "Error: research_plan.yaml not found at $RESEARCH_PLAN"
+  exit 1
+fi
+
+# Extract experiment IDs using Python (since we already have uv/python in the project)
+EXPERIMENTS=($(uv run python -c "
+import yaml
+with open('$RESEARCH_PLAN') as f:
+    plan = yaml.safe_load(f)
+for exp_id in plan.get('experiments', {}).keys():
+    print(exp_id)
+"))
 
 echo "Syncing results from Modal volume 'foresight-results'..."
 

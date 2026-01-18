@@ -2,6 +2,9 @@
 /**
  * Generates status.json from experiment results and agent output files.
  * Run this script to update the dashboard data.
+ *
+ * NOTE: Reads experiment/gate definitions from research/research_plan.yaml
+ * (single source of truth for all experiment configuration)
  */
 
 import fs from 'fs';
@@ -13,24 +16,33 @@ import { execSync } from 'child_process';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../..');
 
-const EXPERIMENTS = [
-  // Phase 1: Original experiments (C1, Q2 pivoted, Q1 passed)
-  { id: 'c1-vlm-latent-sufficiency', name: 'C1: VLM Latent Sufficiency', phase: 1, pivoted: true },
-  { id: 'q1-latent-alignment', name: 'Q1: Latent Space Alignment', phase: 1 },
-  { id: 'q2-information-preservation', name: 'Q2: Information Preservation', phase: 1, pivoted: true },
-  // Phase 1b: Pivot experiment (replaces C1/Q2 for Gate 1)
-  { id: 'p2-hybrid-encoder', name: 'P2: Hybrid Encoder (DINOv2 + VLM)', phase: 1 },
-  // Phase 2+
-  { id: 'c2-adapter-bridging', name: 'C2: Adapter Bridging', phase: 2 },
-  { id: 'q3-temporal-coherence', name: 'Q3: Temporal Coherence', phase: 2 },
-  { id: 'c3-future-prediction', name: 'C3: Future Prediction', phase: 3 },
-  { id: 'q4-training-data', name: 'Q4: Training Data', phase: 3 },
-  { id: 'q5-prediction-horizon', name: 'Q5: Prediction Horizon', phase: 3 },
-  { id: 'c4-pixel-verification', name: 'C4: Pixel Verification', phase: 4 },
-];
+// Load experiment and gate definitions from central config
+const RESEARCH_PLAN_PATH = path.join(ROOT, 'research/research_plan.yaml');
 
-const WANDB_BASE = 'https://wandb.ai/a1j9o94/foresight';
-const MODAL_BASE = 'https://modal.com/apps/a1j9o94/main';
+function loadResearchPlan() {
+  try {
+    const content = fs.readFileSync(RESEARCH_PLAN_PATH, 'utf-8');
+    return yaml.parse(content);
+  } catch (e) {
+    console.error(`Error loading research_plan.yaml: ${e.message}`);
+    console.error('Using fallback empty config');
+    return { experiments: {}, gates: {}, links: {} };
+  }
+}
+
+const researchPlan = loadResearchPlan();
+
+// Transform YAML experiments to array format used by dashboard
+const EXPERIMENTS = Object.entries(researchPlan.experiments || {}).map(([id, exp]) => ({
+  id,
+  name: exp.name,
+  phase: exp.phase,
+  pivoted: exp.status === 'pivoted',
+}));
+
+// Get links from research plan
+const WANDB_BASE = researchPlan.links?.wandb || 'https://wandb.ai/a1j9o94/foresight';
+const MODAL_BASE = researchPlan.links?.modal || 'https://modal.com/apps/a1j9o94/main';
 
 function readYaml(filePath) {
   try {
@@ -173,33 +185,13 @@ function generateStatus() {
 
   const agents = getAgentStatus();
 
-  const gates = [
-    {
-      id: 'gate_1_reconstruction',
-      name: 'Gate 1: Reconstruction',
-      // Updated after pivot: Q1 passed, P2 replaces failed C1/Q2 spatial requirements
-      experiments: ['q1-latent-alignment', 'p2-hybrid-encoder'],
-      unlocks: 'Phase 2 (Adapter Training)',
-    },
-    {
-      id: 'gate_2_bridging',
-      name: 'Gate 2: Bridging',
-      experiments: ['c2-adapter-bridging', 'q3-temporal-coherence'],
-      unlocks: 'Phase 3 (Prediction)',
-    },
-    {
-      id: 'gate_3_prediction',
-      name: 'Gate 3: Prediction',
-      experiments: ['c3-future-prediction', 'q4-training-data', 'q5-prediction-horizon'],
-      unlocks: 'Phase 4 (Verification)',
-    },
-    {
-      id: 'gate_4_verification',
-      name: 'Gate 4: Verification',
-      experiments: ['c4-pixel-verification'],
-      unlocks: 'Final Evaluation',
-    },
-  ];
+  // Load gates from research_plan.yaml (single source of truth)
+  const gates = Object.entries(researchPlan.gates || {}).map(([id, gate]) => ({
+    id,
+    name: gate.name,
+    experiments: gate.experiments,
+    unlocks: gate.unlocks,
+  }));
 
   // Calculate gate status
   for (const gate of gates) {

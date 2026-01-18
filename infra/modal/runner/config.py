@@ -1,8 +1,14 @@
-"""Experiment configuration parsing."""
+"""Experiment configuration parsing.
+
+NOTE: Experiment registry is loaded from research/research_plan.yaml
+(single source of truth for all experiment configuration)
+"""
 
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import yaml
 
 
 @dataclass
@@ -168,69 +174,46 @@ def _parse_dependencies(content: str) -> list[str]:
     return dependencies
 
 
-# Standard experiment registry
-EXPERIMENT_REGISTRY = {
-    "c1-vlm-latent-sufficiency": {
-        "sub_experiments": ["e1_1", "e1_2", "e1_3", "e1_4", "e1_5", "e1_6"],
-        "success_metrics": {
-            "lpips": {"target": 0.25, "acceptable": 0.35, "failure": 0.45},
-            "ssim": {"target": 0.85, "acceptable": 0.75, "failure": 0.65},
-            "spatial_iou": {"target": 0.75, "acceptable": 0.6, "failure": 0.5},
-        },
-    },
-    "c2-adapter-bridging": {
-        "sub_experiments": ["e2_1", "e2_2", "e2_3", "e2_4"],
-        "success_metrics": {
-            "param_efficiency": {"target": 0.9, "acceptable": 0.8, "failure": 0.6},
-        },
-    },
-    "c3-future-prediction": {
-        "sub_experiments": ["e3_1", "e3_2", "e3_3"],
-        "success_metrics": {
-            "cosine_sim_t5": {"target": 0.75, "acceptable": 0.65, "failure": 0.5},
-        },
-    },
-    "c4-pixel-verification": {
-        "sub_experiments": ["e4_1", "e4_2", "e4_3"],
-        "success_metrics": {
-            "accuracy_improvement": {"target": 0.15, "acceptable": 0.1, "failure": 0.05},
-        },
-    },
-    "q1-latent-alignment": {
-        "sub_experiments": ["eq1_1", "eq1_2", "eq1_3", "eq1_4", "eq1_5", "eq1_6", "eq1_7"],
-        "success_metrics": {
-            "linear_probe_r2": {"target": 0.7, "acceptable": 0.5, "failure": 0.3},
-            "spearman_correlation": {"target": 0.8, "acceptable": 0.6, "failure": 0.4},
-            "neighborhood_recall_at_10": {"target": 0.4, "acceptable": 0.2, "failure": 0.1},
-            "cka": {"target": 0.5, "acceptable": 0.4, "failure": 0.2},
-        },
-    },
-    "q2-information-preservation": {
-        "sub_experiments": ["e_q2_1", "e_q2_2", "e_q2_3", "e_q2_4", "e_q2_5", "e_q2_6"],
-        "success_metrics": {
-            "bbox_iou": {"target": 0.8, "acceptable": 0.7, "failure": 0.5},
-            "lpips": {"target": 0.25, "acceptable": 0.3, "failure": 0.5},
-            "edge_f1": {"target": 0.7, "acceptable": 0.6, "failure": 0.4},
-            "mAP": {"target": 0.5, "acceptable": 0.4, "failure": 0.3},
-        },
-    },
-    "q3-temporal-coherence": {
-        "sub_experiments": ["e_q3_1", "e_q3_2"],
-        "success_metrics": {},
-    },
-    "q4-training-data": {
-        "sub_experiments": ["e_q4_1", "e_q4_2"],
-        "success_metrics": {},
-    },
-    "q5-prediction-horizon": {
-        "sub_experiments": ["e_q5_1", "e_q5_2"],
-        "success_metrics": {},
-    },
-}
+# Load experiment registry from research_plan.yaml (single source of truth)
+def _load_experiment_registry() -> dict:
+    """Load experiment configurations from research_plan.yaml."""
+    # Find the research_plan.yaml relative to this file
+    # This file is at: infra/modal/runner/config.py
+    # YAML is at: research/research_plan.yaml
+    config_path = Path(__file__).parent.parent.parent.parent / "research" / "research_plan.yaml"
+
+    if not config_path.exists():
+        print(f"Warning: research_plan.yaml not found at {config_path}")
+        return {}
+
+    with open(config_path) as f:
+        plan = yaml.safe_load(f)
+
+    registry = {}
+    for exp_id, exp_config in plan.get("experiments", {}).items():
+        # Transform success_criteria from YAML format to registry format
+        success_metrics = {}
+        for metric_name, values in exp_config.get("success_criteria", {}).items():
+            success_metrics[metric_name] = {
+                "target": values.get("target"),
+                "acceptable": values.get("acceptable"),
+                "failure": values.get("failure"),
+            }
+
+        registry[exp_id] = {
+            "sub_experiments": exp_config.get("sub_experiments", []),
+            "success_metrics": success_metrics,
+        }
+
+    return registry
+
+
+# Load once at module import
+EXPERIMENT_REGISTRY = _load_experiment_registry()
 
 
 def get_experiment_config(experiment_id: str) -> dict:
     """Get configuration for an experiment from the registry."""
     if experiment_id not in EXPERIMENT_REGISTRY:
-        raise ValueError(f"Unknown experiment: {experiment_id}")
+        raise ValueError(f"Unknown experiment: {experiment_id}. Available: {list(EXPERIMENT_REGISTRY.keys())}")
     return EXPERIMENT_REGISTRY[experiment_id]

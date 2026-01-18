@@ -1,0 +1,301 @@
+# research_plan.yaml
+# Single source of truth for all experiment configuration
+# All tools (dashboard, runner, validation, sync) read from this file
+
+project:
+  name: Foresight
+  hypothesis: "AI systems benefit from generating pixel-level video predictions as part of their reasoning process"
+  architecture: "Generative Latent Prediction (GLP) - VLM + Video Decoder connected via trainable adapter"
+
+# =============================================================================
+# EXPERIMENTS
+# =============================================================================
+experiments:
+  # ---------------------------------------------------------------------------
+  # Phase 1: Foundation - Can VLM latents support video reconstruction?
+  # ---------------------------------------------------------------------------
+
+  c1-vlm-latent-sufficiency:
+    name: "C1: VLM Latent Sufficiency"
+    type: claim
+    phase: 1
+    status: pivoted
+    description: "Can Qwen2.5-VL's internal representation be decoded back into video?"
+    outcome: "Pivoted - spatial IoU failed (0.559 < 0.6 threshold)"
+    sub_experiments: [e1_1, e1_2, e1_3, e1_4, e1_5, e1_6]
+    success_criteria:
+      lpips:
+        target: 0.25
+        acceptable: 0.35
+        failure: 0.45
+        direction: lower
+      ssim:
+        target: 0.85
+        acceptable: 0.75
+        failure: 0.65
+        direction: higher
+      spatial_iou:
+        target: 0.75
+        acceptable: 0.6
+        failure: 0.5
+        direction: higher
+    dependencies: []
+
+  q1-latent-alignment:
+    name: "Q1: Latent Space Alignment"
+    type: question
+    phase: 1
+    status: completed
+    description: "Do VLM and video decoder latent spaces have compatible structure?"
+    outcome: "Proceed - all 4 criteria met (CKA=0.687)"
+    sub_experiments: [eq1_1, eq1_2, eq1_3, eq1_4, eq1_5, eq1_6, eq1_7]
+    success_criteria:
+      linear_probe_r2:
+        target: 0.7
+        acceptable: 0.5
+        failure: 0.3
+        direction: higher
+      spearman_correlation:
+        target: 0.8
+        acceptable: 0.6
+        failure: 0.4
+        direction: higher
+      neighborhood_recall_at_10:
+        target: 0.4
+        acceptable: 0.2
+        failure: 0.1
+        direction: higher
+      cka:
+        target: 0.5
+        acceptable: 0.4
+        failure: 0.2
+        direction: higher
+    dependencies: []
+
+  q2-information-preservation:
+    name: "Q2: Information Preservation"
+    type: question
+    phase: 1
+    status: pivoted
+    description: "Where does spatial information get lost in the VLM pipeline?"
+    outcome: "Pivoted - spatial info severely degraded (mAP=0.001)"
+    sub_experiments: [e_q2_1, e_q2_2, e_q2_3, e_q2_4, e_q2_5, e_q2_6]
+    success_criteria:
+      bbox_iou:
+        target: 0.8
+        acceptable: 0.7
+        failure: 0.5
+        direction: higher
+      lpips:
+        target: 0.25
+        acceptable: 0.3
+        failure: 0.5
+        direction: lower
+      edge_f1:
+        target: 0.7
+        acceptable: 0.6
+        failure: 0.4
+        direction: higher
+      mAP:
+        target: 0.5
+        acceptable: 0.4
+        failure: 0.3
+        direction: higher
+    dependencies: []
+
+  p2-hybrid-encoder:
+    name: "P2: Hybrid Encoder (DINOv2 + VLM)"
+    type: pivot
+    phase: 1
+    status: in_progress
+    description: "Combine DINOv2 spatial features with VLM semantic features via cross-attention fusion"
+    replaces: [c1-vlm-latent-sufficiency, q2-information-preservation]
+    sub_experiments: [e_p2_1, e_p2_2, e_p2_3, e_p2_4, e_p2_5, e_p2_6]
+    success_criteria:
+      spatial_iou:
+        target: 0.70
+        acceptable: 0.60
+        failure: 0.50
+        direction: higher
+      lpips:
+        target: 0.25
+        acceptable: 0.35
+        failure: 0.45
+        direction: lower
+      mAP:
+        target: 0.50
+        acceptable: 0.40
+        failure: 0.20
+        direction: higher
+      latency_overhead:
+        target: 0.15
+        acceptable: 0.25
+        failure: 0.50
+        direction: lower
+    dependencies: []
+
+  # ---------------------------------------------------------------------------
+  # Phase 2: Bridging - Can we efficiently connect VLM to video decoder?
+  # ---------------------------------------------------------------------------
+
+  c2-adapter-bridging:
+    name: "C2: Adapter Bridging"
+    type: claim
+    phase: 2
+    status: not_started
+    description: "A small adapter (~10-50M params) can effectively bridge VLM to video decoder"
+    sub_experiments: [e2_1, e2_2, e2_3, e2_4]
+    success_criteria:
+      param_efficiency:
+        target: 0.9
+        acceptable: 0.8
+        failure: 0.6
+        direction: higher
+        note: "10M params achieves X% of 100M performance"
+    dependencies: [p2-hybrid-encoder]
+
+  q3-temporal-coherence:
+    name: "Q3: Temporal Coherence"
+    type: question
+    phase: 2
+    status: not_started
+    description: "Does conditioning injection disrupt video decoder's temporal dynamics?"
+    sub_experiments: [e_q3_1, e_q3_2]
+    success_criteria:
+      temporal_consistency:
+        target: 0.8
+        acceptable: 0.7
+        failure: 0.5
+        direction: higher
+    dependencies: [p2-hybrid-encoder]
+
+  # ---------------------------------------------------------------------------
+  # Phase 3: Prediction - Can the VLM predict future states?
+  # ---------------------------------------------------------------------------
+
+  c3-future-prediction:
+    name: "C3: Future Prediction"
+    type: claim
+    phase: 3
+    status: not_started
+    description: "VLM can predict future world states in latent space"
+    sub_experiments: [e3_1, e3_2, e3_3]
+    success_criteria:
+      cosine_sim_t5:
+        target: 0.75
+        acceptable: 0.65
+        failure: 0.5
+        direction: higher
+        note: "Cosine similarity at t+5 frames"
+    dependencies: [c2-adapter-bridging, q3-temporal-coherence]
+
+  q4-training-data:
+    name: "Q4: Training Data Requirements"
+    type: question
+    phase: 3
+    status: not_started
+    description: "How much video-action data is needed for effective prediction?"
+    sub_experiments: [e_q4_1, e_q4_2]
+    success_criteria:
+      data_efficiency:
+        target: 0.8
+        acceptable: 0.7
+        failure: 0.6
+        direction: higher
+        note: "10k samples achieves X% of 100k performance"
+    dependencies: [c3-future-prediction]
+
+  q5-prediction-horizon:
+    name: "Q5: Prediction Horizon"
+    type: question
+    phase: 3
+    status: not_started
+    description: "How far into the future can predictions remain accurate?"
+    sub_experiments: [e_q5_1, e_q5_2]
+    success_criteria:
+      horizon_at_0.5_cosine:
+        target: 10
+        acceptable: 5
+        failure: 3
+        direction: higher
+        note: "Number of frames until cosine sim drops below 0.5"
+    dependencies: [c3-future-prediction]
+
+  # ---------------------------------------------------------------------------
+  # Phase 4: Verification - Does pixel prediction improve decisions?
+  # ---------------------------------------------------------------------------
+
+  c4-pixel-verification:
+    name: "C4: Pixel Verification"
+    type: claim
+    phase: 4
+    status: not_started
+    description: "Comparing predicted video to actual outcomes improves decision accuracy"
+    sub_experiments: [e4_1, e4_2, e4_3]
+    success_criteria:
+      accuracy_improvement:
+        target: 0.15
+        acceptable: 0.10
+        failure: 0.05
+        direction: higher
+        note: "Accuracy improvement from verification vs no verification"
+    dependencies: [c3-future-prediction, q5-prediction-horizon]
+
+# =============================================================================
+# DECISION GATES
+# =============================================================================
+gates:
+  gate_1_reconstruction:
+    name: "Gate 1: Reconstruction"
+    description: "Validate that hybrid architecture can reconstruct spatial information"
+    experiments: [q1-latent-alignment, p2-hybrid-encoder]
+    unlocks: "Phase 2 (Adapter Training)"
+    note: "Updated after C1/Q2 pivoted - P2 replaces spatial validation"
+
+  gate_2_bridging:
+    name: "Gate 2: Bridging"
+    description: "Validate efficient adapter and temporal coherence"
+    experiments: [c2-adapter-bridging, q3-temporal-coherence]
+    unlocks: "Phase 3 (Prediction)"
+
+  gate_3_prediction:
+    name: "Gate 3: Prediction"
+    description: "Validate future state prediction capability"
+    experiments: [c3-future-prediction, q4-training-data, q5-prediction-horizon]
+    unlocks: "Phase 4 (Verification)"
+
+  gate_4_verification:
+    name: "Gate 4: Verification"
+    description: "Validate that pixel verification improves decisions"
+    experiments: [c4-pixel-verification]
+    unlocks: "Final Evaluation"
+
+# =============================================================================
+# ARCHIVED EXPERIMENTS (pivoted but preserved for reference)
+# =============================================================================
+archived:
+  p1-premerge-vit:
+    name: "P1: Pre-merge ViT Features"
+    reason: "Rejected - Q2 showed pre-merge IoU was only 0.101"
+    proposal: "research/proposals/archived/pivot-1-premerge-vit.md"
+
+  p3-spatial-enhancement:
+    name: "P3: Spatial Enhancement Modules"
+    reason: "Rejected - High risk (30-40% success), can't recover destroyed info"
+    proposal: "research/proposals/archived/pivot-3-spatial-enhancement.md"
+
+  p4-alternative-vlm:
+    name: "P4: Alternative VLM Architecture"
+    reason: "Rejected - Risk all VLMs have similar limitations, higher cost"
+    proposal: "research/proposals/archived/pivot-4-alternative-vlm.md"
+    experiment_plan: "research/experiments/archived-p4-alternative-vlm.md"
+
+# =============================================================================
+# METADATA
+# =============================================================================
+links:
+  wandb: "https://wandb.ai/a1j9o94/foresight"
+  modal: "https://modal.com/apps/a1j9o94/main"
+  github: "https://github.com/a1j9o94/foresight"
+
+last_updated: "2026-01-18"

@@ -6,6 +6,9 @@ Generates:
 - status/claims.yaml - Status of all claims and questions
 - status/gates.yaml - Go/no-go decision status
 
+NOTE: Experiment/gate definitions are loaded from research/research_plan.yaml
+(single source of truth for all experiment configuration)
+
 Usage:
     python rollup_status.py
     python rollup_status.py --output-dir /path/to/status
@@ -18,84 +21,81 @@ from pathlib import Path
 import yaml
 
 
-# Experiment metadata
-CLAIMS = {
-    "c1-vlm-latent-sufficiency": {
-        "name": "c1_vlm_latent_sufficiency",
-        "claim": "VLM latents contain sufficient information",
-        "depends_on": [],
-        "success_metrics": ["lpips", "spatial_iou"],
-    },
-    "c2-adapter-bridging": {
-        "name": "c2_adapter_bridging",
-        "claim": "Small adapter can bridge latent spaces",
-        "depends_on": ["c1-vlm-latent-sufficiency"],
-        "success_metrics": ["lpips", "param_efficiency"],
-    },
-    "c3-future-prediction": {
-        "name": "c3_future_prediction",
-        "claim": "VLM can predict future states",
-        "depends_on": ["c2-adapter-bridging"],
-        "success_metrics": ["cosine_similarity", "action_accuracy"],
-    },
-    "c4-pixel-verification": {
-        "name": "c4_pixel_verification",
-        "claim": "Pixel verification improves accuracy",
-        "depends_on": ["c3-future-prediction"],
-        "success_metrics": ["accuracy_improvement", "correlation"],
-    },
-}
+def _load_research_plan() -> dict:
+    """Load experiment and gate definitions from research_plan.yaml."""
+    # This file is at: research/validation/scripts/rollup_status.py
+    # YAML is at: research/research_plan.yaml
+    config_path = Path(__file__).parent.parent.parent / "research_plan.yaml"
 
-QUESTIONS = {
-    "q1-latent-alignment": {
-        "name": "q1_latent_alignment",
-        "question": "How hard is latent space alignment?",
-        "depends_on": [],
-    },
-    "q2-information-preservation": {
-        "name": "q2_information_preservation",
-        "question": "Does VLM preserve spatial information?",
-        "depends_on": [],
-    },
-    "q3-temporal-coherence": {
-        "name": "q3_temporal_coherence",
-        "question": "Can we maintain temporal coherence?",
-        "depends_on": ["c2-adapter-bridging"],
-    },
-    "q4-training-data": {
-        "name": "q4_training_data",
-        "question": "How much training data do we need?",
-        "depends_on": ["c2-adapter-bridging"],
-    },
-    "q5-prediction-horizon": {
-        "name": "q5_prediction_horizon",
-        "question": "What prediction horizon is optimal?",
-        "depends_on": ["c3-future-prediction"],
-    },
-}
+    if not config_path.exists():
+        print(f"Warning: research_plan.yaml not found at {config_path}")
+        return {"experiments": {}, "gates": {}}
 
-GATES = {
-    "gate_1_reconstruction": {
-        "description": "Can we reconstruct video from VLM latents?",
-        "depends_on": ["c1-vlm-latent-sufficiency", "q1-latent-alignment", "q2-information-preservation"],
-        "required_for_phase": 2,
-    },
-    "gate_2_bridging": {
-        "description": "Can small adapter bridge latent spaces?",
-        "depends_on": ["c2-adapter-bridging", "q3-temporal-coherence"],
-        "required_for_phase": 3,
-    },
-    "gate_3_prediction": {
-        "description": "Can VLM predict future states?",
-        "depends_on": ["c3-future-prediction", "q4-training-data", "q5-prediction-horizon"],
-        "required_for_phase": 4,
-    },
-    "gate_4_verification": {
-        "description": "Does pixel verification improve accuracy?",
-        "depends_on": ["c4-pixel-verification"],
-        "required_for_phase": 5,  # Final
-    },
-}
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def _build_experiment_metadata(research_plan: dict) -> tuple[dict, dict]:
+    """Build CLAIMS and QUESTIONS dicts from research_plan.yaml."""
+    claims = {}
+    questions = {}
+
+    for exp_id, exp_config in research_plan.get("experiments", {}).items():
+        exp_type = exp_config.get("type", "claim")
+
+        # Build success metrics list from success_criteria keys
+        success_metrics = list(exp_config.get("success_criteria", {}).keys())
+
+        entry = {
+            "name": exp_id.replace("-", "_"),
+            "depends_on": exp_config.get("dependencies", []),
+            "success_metrics": success_metrics,
+        }
+
+        if exp_type == "claim":
+            entry["claim"] = exp_config.get("description", "")
+            claims[exp_id] = entry
+        elif exp_type == "question":
+            entry["question"] = exp_config.get("description", "")
+            questions[exp_id] = entry
+        elif exp_type == "pivot":
+            # Pivots are treated as claims for status tracking
+            entry["claim"] = exp_config.get("description", "")
+            entry["replaces"] = exp_config.get("replaces", [])
+            claims[exp_id] = entry
+
+    return claims, questions
+
+
+def _build_gates_metadata(research_plan: dict) -> dict:
+    """Build GATES dict from research_plan.yaml."""
+    gates = {}
+
+    for gate_id, gate_config in research_plan.get("gates", {}).items():
+        # Extract phase number from unlocks string (e.g., "Phase 2" -> 2)
+        unlocks = gate_config.get("unlocks", "")
+        phase_num = 2  # default
+        if "Phase " in unlocks:
+            try:
+                phase_num = int(unlocks.split("Phase ")[1].split()[0])
+            except (ValueError, IndexError):
+                pass
+        elif "Final" in unlocks:
+            phase_num = 5
+
+        gates[gate_id] = {
+            "description": gate_config.get("description", gate_config.get("name", "")),
+            "depends_on": gate_config.get("experiments", []),
+            "required_for_phase": phase_num,
+        }
+
+    return gates
+
+
+# Load from research_plan.yaml (single source of truth)
+_research_plan = _load_research_plan()
+CLAIMS, QUESTIONS = _build_experiment_metadata(_research_plan)
+GATES = _build_gates_metadata(_research_plan)
 
 
 def load_experiment_results(experiment_id: str, experiments_dir: Path) -> dict | None:

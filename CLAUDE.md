@@ -161,13 +161,28 @@ python research/validation/scripts/rollup_status.py
 python research/validation/scripts/check_gates.py <gate-id>
 ```
 
+### Central Configuration
+
+**All experiment definitions, gates, and success criteria are defined in:**
+
+```
+research/research_plan.yaml  # Single source of truth
+```
+
+All tooling (dashboard, runner, validation scripts, sync) reads from this file. To modify experiments, gates, or success criteria, edit `research_plan.yaml` - changes propagate automatically.
+
+```bash
+# Regenerate experiment docs after YAML changes
+python scripts/generate-experiment-docs.py
+```
+
 ### Decision Gates
 
-Progress through phases requires passing gates:
+Progress through phases requires passing gates (defined in `research_plan.yaml`):
 
 | Gate | Experiments Required | Unlocks |
 |------|---------------------|---------|
-| `gate_1_reconstruction` | Q1, **P2** | Phase 2 (Bridging) |
+| `gate_1_reconstruction` | Q1, P2 | Phase 2 (Bridging) |
 | `gate_2_bridging` | C2, Q3 | Phase 3 (Prediction) |
 | `gate_3_prediction` | C3, Q4, Q5 | Phase 4 (Verification) |
 | `gate_4_verification` | C4 | Final evaluation |
@@ -176,15 +191,16 @@ Progress through phases requires passing gates:
 
 ### Success Criteria Quick Reference
 
-| Experiment | Key Metric | Threshold |
-|------------|-----------|-----------|
-| **P2** | Spatial IoU | > 0.6 |
-| **P2** | LPIPS | < 0.35 |
-| **P2** | mAP@0.5 | > 0.4 |
-| C2 | Param efficiency | 10M achieves >80% of 100M |
-| C3 | Cosine similarity | > 0.65 at t+5 |
-| C4 | Accuracy improvement | > 10% from verification |
-| ~~C1~~ | ~~Spatial IoU~~ | *Pivoted - replaced by P2* |
+See `research/research_plan.yaml` for authoritative thresholds. Summary for current experiments:
+
+| Experiment | Key Metric | Target | Acceptable | Failure |
+|------------|-----------|--------|------------|---------|
+| **P2** | spatial_iou | > 0.70 | > 0.60 | < 0.50 |
+| **P2** | lpips | < 0.25 | < 0.35 | > 0.45 |
+| **P2** | mAP | > 0.50 | > 0.40 | < 0.20 |
+| C2 | param_efficiency | > 0.90 | > 0.80 | < 0.60 |
+| Q3 | temporal_consistency | > 0.80 | > 0.70 | < 0.50 |
+| C3 | cosine_sim_t5 | > 0.75 | > 0.65 | < 0.50 |
 
 ### When to Flag for Human Review
 

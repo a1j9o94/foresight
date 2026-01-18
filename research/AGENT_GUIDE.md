@@ -14,13 +14,25 @@
 
 ---
 
+## Central Configuration
+
+**All experiment definitions, gates, and success criteria are defined in:**
+
+```
+research/research_plan.yaml  # Single source of truth
+```
+
+All tooling (dashboard, runner, validation scripts) reads from this YAML file. The runner automatically loads success criteria from here and assesses your metrics against them.
+
+---
+
 ## Decision Gates
 
-Progress requires passing gates. Know which gate your experiment belongs to:
+Progress requires passing gates. Know which gate your experiment belongs to (see `research_plan.yaml` for authoritative definitions):
 
 | Gate | Experiments | Unlocks |
 |------|-------------|---------|
-| **Gate 1: Reconstruction** | Q1, **P2** | Phase 2 (Bridging) |
+| **Gate 1: Reconstruction** | Q1, P2 | Phase 2 (Bridging) |
 | **Gate 2: Bridging** | C2, Q3 | Phase 3 (Prediction) |
 | **Gate 3: Prediction** | C3, Q4, Q5 | Phase 4 (Verification) |
 | **Gate 4: Verification** | C4 | Final evaluation |
@@ -31,24 +43,24 @@ Progress requires passing gates. Know which gate your experiment belongs to:
 
 ## Success Criteria Reference
 
-**Your experiment MUST report these metrics.** The runner auto-assesses against thresholds.
+**Your experiment MUST report these metrics.** The runner auto-assesses against thresholds defined in `research_plan.yaml`.
 
 | Experiment | Metric | Target | Acceptable | Failure |
 |------------|--------|--------|------------|---------|
-| **P2** | Spatial IoU | > 0.70 | > 0.60 | < 0.50 |
-| **P2** | LPIPS | < 0.25 | < 0.35 | > 0.45 |
-| **P2** | mAP@0.5 | > 0.50 | > 0.40 | < 0.20 |
-| **P2** | Latency overhead | < 15% | < 25% | > 50% |
-| **Q1** | Linear Probe R² | > 0.6 | > 0.5 | < 0.4 |
-| **Q1** | CKA | > 0.5 | > 0.4 | < 0.3 |
-| ~~C1~~ | ~~LPIPS~~ | - | - | *Pivoted* |
-| ~~Q2~~ | ~~Bbox IoU~~ | - | - | *Pivoted* |
-| **C2** | Param efficiency | 10M ≥ 80% of 100M | 10M ≥ 70% | < 60% |
-| **Q3** | Temporal consistency | > 0.8 | > 0.7 | < 0.5 |
-| **C3** | Cosine sim @ t+5 | > 0.75 | > 0.65 | < 0.5 |
-| **Q4** | Data efficiency | 10k ≥ 80% of 100k | ≥ 70% | < 60% |
-| **Q5** | Horizon @ 0.5 cos | > 10 frames | > 5 frames | < 3 frames |
-| **C4** | Accuracy improvement | > 15% | > 10% | < 5% |
+| **P2** | spatial_iou | > 0.70 | > 0.60 | < 0.50 |
+| **P2** | lpips | < 0.25 | < 0.35 | > 0.45 |
+| **P2** | mAP | > 0.50 | > 0.40 | < 0.20 |
+| **P2** | latency_overhead | < 0.15 | < 0.25 | > 0.50 |
+| **Q1** | linear_probe_r2 | > 0.70 | > 0.50 | < 0.30 |
+| **Q1** | cka | > 0.50 | > 0.40 | < 0.20 |
+| **C2** | param_efficiency | > 0.90 | > 0.80 | < 0.60 |
+| **Q3** | temporal_consistency | > 0.80 | > 0.70 | < 0.50 |
+| **C3** | cosine_sim_t5 | > 0.75 | > 0.65 | < 0.50 |
+| **Q4** | data_efficiency | > 0.80 | > 0.70 | < 0.60 |
+| **Q5** | horizon_at_0.5_cosine | > 10 | > 5 | < 3 |
+| **C4** | accuracy_improvement | > 0.15 | > 0.10 | < 0.05 |
+
+Pivoted experiments (C1, Q2) are archived but preserved in `research_plan.yaml` for reference.
 
 ---
 
