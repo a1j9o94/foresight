@@ -1,0 +1,115 @@
+# Schema for experiment result files
+# Each experiment must produce a results.yaml matching this schema
+
+type: object
+required:
+  - experiment_id
+  - claim
+  - status
+  - executed_by
+  - started_at
+  - success_criteria
+  - results
+  - assessment
+  - recommendation
+
+properties:
+  experiment_id:
+    type: string
+    pattern: "^(c[1-4]|q[1-5])-[a-z-]+$"
+    description: "Experiment identifier (e.g., c1-vlm-latent-sufficiency)"
+
+  claim:
+    type: string
+    description: "The claim or question being tested"
+
+  status:
+    type: string
+    enum: [not_started, in_progress, completed, blocked, failed, pivoted]
+
+  executed_by:
+    type: string
+    description: "Identifier of the Claude instance or researcher"
+
+  started_at:
+    type: string
+    format: date-time
+
+  completed_at:
+    type: string
+    format: date-time
+
+  success_criteria:
+    type: object
+    description: "Pre-registered thresholds from experiment plan"
+    additionalProperties:
+      type: number
+
+  results:
+    type: object
+    required:
+      - experiments
+    properties:
+      experiments:
+        type: object
+        additionalProperties:
+          type: object
+          required:
+            - status
+          properties:
+            status:
+              type: string
+              enum: [completed, in_progress, skipped, failed]
+            finding:
+              type: string
+            metrics:
+              type: object
+              additionalProperties:
+                type: number
+            artifacts:
+              type: array
+              items:
+                type: string
+
+  assessment:
+    type: object
+    required:
+      - success_criteria_met
+      - confidence
+    properties:
+      success_criteria_met:
+        type: boolean
+      confidence:
+        type: string
+        enum: [high, medium, low]
+      confidence_notes:
+        type: string
+    additionalProperties:
+      type: [number, string, boolean]
+
+  recommendation:
+    type: string
+    enum: [proceed, pivot, investigate, block]
+
+  recommendation_notes:
+    type: string
+
+  blockers:
+    type: array
+    items:
+      type: string
+
+  issues:
+    type: array
+    items:
+      type: string
+
+  detailed_analysis:
+    type: string
+    description: "Path to detailed analysis notebook"
+
+# Validation rules (checked by script, not schema)
+# 1. All artifacts referenced must exist
+# 2. Metrics must be within plausible bounds
+# 3. success_criteria_met must match actual metrics vs thresholds
+# 4. completed_at required if status is completed
