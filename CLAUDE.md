@@ -83,6 +83,90 @@ Primary datasets for video-action pairs:
 
 Working hypothesis documents are in `research/hypotheses/`. Update these as literature review progresses.
 
+## Experiment Execution & Validation
+
+This project uses a structured validation system to track research progress across parallel experiments. See `research/validation/README.md` for full details.
+
+### Running an Experiment
+
+1. **Find your experiment plan** in `research/experiments/` (e.g., `c1-vlm-latent-sufficiency.md`)
+2. **Create results directory**: `research/experiments/<experiment-id>/`
+3. **Copy the template**: `cp research/validation/templates/results.yaml.template research/experiments/<experiment-id>/results.yaml`
+4. **Execute sub-experiments** as defined in the plan
+5. **Update results.yaml** as you complete each sub-experiment
+6. **Store artifacts** in `research/experiments/<experiment-id>/artifacts/`
+
+### Results File Structure
+
+Each experiment produces a `results.yaml` with:
+- **Metrics**: Actual measured values (LPIPS, accuracy, etc.)
+- **Artifacts**: Paths to plots, checkpoints, logs
+- **Assessment**: Whether success criteria were met
+- **Recommendation**: proceed / pivot / investigate / block
+
+Example:
+```yaml
+experiment_id: c1-vlm-latent-sufficiency
+status: completed
+success_criteria:
+  lpips_threshold: 0.35
+results:
+  experiments:
+    e1_2_reconstruction_probe:
+      status: completed
+      metrics:
+        lpips: 0.31
+      artifacts:
+        - artifacts/reconstruction_samples.png
+assessment:
+  success_criteria_met: true
+  lpips_achieved: 0.31
+  confidence: high
+recommendation: proceed
+```
+
+### Validation Commands
+
+```bash
+# Validate your experiment results
+python research/validation/scripts/validate_experiment.py <experiment-id>
+
+# Check overall project status
+python research/validation/scripts/rollup_status.py
+
+# Check if a decision gate can be passed
+python research/validation/scripts/check_gates.py <gate-id>
+```
+
+### Decision Gates
+
+Progress through phases requires passing gates:
+
+| Gate | Experiments Required | Unlocks |
+|------|---------------------|---------|
+| `gate_1_reconstruction` | C1, Q1, Q2 | Phase 2 (Bridging) |
+| `gate_2_bridging` | C2, Q3 | Phase 3 (Prediction) |
+| `gate_3_prediction` | C3, Q4, Q5 | Phase 4 (Verification) |
+| `gate_4_verification` | C4 | Final evaluation |
+
+### Success Criteria Quick Reference
+
+| Experiment | Key Metric | Threshold |
+|------------|-----------|-----------|
+| C1 | LPIPS | < 0.35 |
+| C1 | Spatial IoU | > 0.6 |
+| C2 | Param efficiency | 10M achieves >80% of 100M |
+| C3 | Cosine similarity | > 0.65 at t+5 |
+| C4 | Accuracy improvement | > 10% from verification |
+
+### When to Flag for Human Review
+
+Add to `requires_human_review` in your results if:
+- Confidence is "low"
+- Results are unexpected or contradictory
+- Pivot decision needed
+- Edge cases discovered that affect interpretation
+
 ## W&B Configuration
 
 - **Project name**: `foresight`
