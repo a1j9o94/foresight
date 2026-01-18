@@ -121,15 +121,24 @@ This is a **fundamental architectural mismatch** for the video generation task, 
 
 ---
 
-## Recommended Pivot Direction
+## Pivot Decision: Hybrid Encoder (P2)
 
-Based on Gate 1 findings, the most promising pivot options are:
+**Decision Date:** 2026-01-18
 
-1. **Hybrid Encoder** (Recommended) - Keep VLM for semantics, add DINOv2/SAM for spatial
-2. **Pre-merge ViT** - Use ViT features before the 2x2 merger
-3. **Alternative VLM** - Switch to LLaVA-NeXT or InternVL2 with better spatial preservation
+After evaluating 4 pivot options, we selected **Pivot 2: Hybrid Encoder**:
 
-See `/research/proposals/` for detailed analysis of each option.
+| Option | Decision | Reason |
+|--------|----------|--------|
+| P1: Pre-merge ViT | Rejected | Pre-merge IoU was only 0.101 - spatial loss occurs before merger |
+| **P2: Hybrid Encoder** | **ACCEPTED** | Proven components, lowest cost (~$580), directly addresses problem |
+| P3: Spatial Enhancement | Rejected | High risk (30-40%) - can't recover destroyed information |
+| P4: Alternative VLM | Rejected | Risk all VLMs have similar limits; higher cost than hybrid |
+
+**Architecture:** DINOv2 for spatial features + Qwen2.5-VL for semantics, combined via cross-attention fusion module.
+
+**Experiment Plan:** See `research/experiments/p2-hybrid-encoder.md`
+
+**Archived Proposals:** See `research/proposals/archived/`
 
 ---
 
@@ -137,8 +146,9 @@ See `/research/proposals/` for detailed analysis of each option.
 
 | Date | Update |
 |------|--------|
+| 2026-01-18 | **Pivot decision: Hybrid Encoder (P2) selected** - P1, P3, P4 archived |
+| 2026-01-18 | Pivot proposals evaluated (4 options analyzed) |
 | 2026-01-18 | Gate 1 complete - BLOCKED due to spatial information loss |
 | 2026-01-18 | C1 completed - PIVOT (spatial IoU=0.559 < 0.6) |
 | 2026-01-18 | Q1 completed - PROCEED (all criteria met) |
 | 2026-01-18 | Q2 completed - PIVOT (spatial info severely degraded) |
-| 2026-01-18 | Pivot proposals initiated |

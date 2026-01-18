@@ -1,7 +1,11 @@
-# Experiment Plan: P4 - Alternative VLM Architecture Evaluation
+# [ARCHIVED] Experiment Plan: P4 - Alternative VLM Architecture Evaluation
+
+> **ARCHIVED 2026-01-18:** This experiment was not pursued. After reviewing all pivot options, we chose Pivot 2 (Hybrid Encoder with DINOv2) as it addresses the spatial information problem with proven components at lower cost (~$580 vs ~$1,884). This document is preserved for future reference if the hybrid approach fails or if we want to revisit alternative VLMs.
+>
+> **Decision rationale:** Hybrid encoder directly solves the spatial bottleneck using DINOv2's proven spatial features, while preserving our existing Qwen2.5-VL work for semantics. Alternative VLMs carry risk that they may have similar spatial limitations.
 
 **Pivot Rationale:** Gate 1 failed due to spatial information loss in Qwen2.5-VL (Spatial IoU=0.559, mAP=0.001)
-**Status:** Not Started
+**Status:** ARCHIVED - Not Pursued
 **Priority:** Critical (blocks all downstream work)
 **Owner:** TBD
 **Created:** 2026-01-18
