@@ -4,106 +4,301 @@
 
 > An AI system that generates explicit pixel-level predictions of future states and can compare those predictions against actual outcomes will make more accurate decisions than systems reasoning purely in text/token space.
 
-## Hypothesis Breakdown
+## Why This Might Be True
 
-### H1: Pixel Grounding Improves Prediction
+The Dreamer line of work proves that "imagining" future states improves decision-making in RL agents. V-JEPA shows latent prediction is efficient but Meta researchers note it may be "sophisticated pattern matching" - there's no way to verify predictions against reality.
 
-**Claim:** Generating actual pixels (rather than just latent predictions) forces the model to commit to specific, verifiable details about the future.
+Our hypothesis: **pixel grounding provides verification**. By generating actual video frames, we can:
+1. Compare predictions to reality (LPIPS, perceptual metrics)
+2. Detect hallucinations (when predictions diverge from physics)
+3. Enable interpretability (humans can inspect what the model "thinks" will happen)
 
-**Reasoning:**
-- Text predictions can be vague ("the cup might fall")
-- Pixel predictions must be specific (exact position, orientation, timing)
-- This specificity may improve prediction accuracy through forced commitment
+---
 
-**Test:** Compare action prediction accuracy between:
-- Text-only VLM
-- VLM + latent prediction (JEPA-style)
-- VLM + pixel prediction (our approach)
+## Testable Claims
 
-### H2: Verification Enables Self-Correction
+We break the primary hypothesis into **four independent claims**, each testable in isolation.
 
-**Claim:** Comparing predicted video to actual outcomes provides a learning signal that enables self-correction.
+### Claim 1: VLM Latents Contain Sufficient Information
 
-**Reasoning:**
-- Current LLMs cannot verify their predictions against reality
-- Visual comparison (LPIPS, VLM-based) provides quantifiable error
-- This error signal could drive iterative refinement
+**Statement:** Qwen2-VL's internal representations contain enough information to reconstruct the input video at reasonable fidelity.
 
-**Test:** Evaluate prediction accuracy improvement after verification loop:
-- Single-shot prediction
-- Prediction + verification + reprediction
+**Why this matters:** If we can't reconstruct what the VLM *sees*, we certainly can't generate what it *predicts*.
 
-### H3: Minimal Training Suffices
+**Independent Test:**
+```
+Input: Video frames
+Process: Encode with Qwen2-VL → Extract latents → Adapter → Video decoder
+Output: Reconstructed video
+Compare: Original vs reconstructed
+```
 
-**Claim:** Training only a small adapter layer (~10-50M params) is sufficient to bridge VLM and video decoder.
+**Metrics:**
+- LPIPS (perceptual similarity) < 0.3 indicates good reconstruction
+- FVD (Frechet Video Distance) comparable to other video models
+- Human eval: "Is this recognizably the same scene?"
 
-**Reasoning:**
-- Both foundation models already understand visual concepts
-- The gap is primarily in "format translation" between representations
-- Similar to how LoRA enables task adaptation with few parameters
+**Success criterion:** Reconstruction quality sufficient to preserve task-relevant details (objects, positions, actions).
 
-**Test:** Compare performance across adapter sizes and training regimes.
+**Failure mode:** Latents lose spatial information during VLM processing (especially after token merging). May need to extract pre-merge patch embeddings.
 
-## Alternative Hypotheses
+---
 
-### A1: Latent Space Sufficient
+### Claim 2: Small Adapter Can Bridge Latent Spaces
 
-JEPA-style latent prediction might be sufficient without pixel generation.
+**Statement:** A small adapter network (~5-10M params) can translate VLM latent space to video decoder conditioning space.
 
-**Counter-argument:** Latent predictions are hard to verify and may miss details that become obvious in pixel space.
+**Why this matters:** If bridging requires massive retraining, the approach isn't practical.
 
-### A2: Text Sufficient with Better Prompting
+**Independent Test:**
+```
+Input: VLM latents from real video (not predictions)
+Process: Adapter → Video decoder
+Output: Generated video
+Compare: Original video vs generated
+```
 
-Better chain-of-thought prompting might achieve similar results without video generation.
+**Metrics:**
+- Training convergence (loss decreases, doesn't diverge)
+- Reconstruction quality (same as Claim 1)
+- Parameter efficiency: quality vs adapter size curve
 
-**Counter-argument:** Text is fundamentally limited in representing spatial/temporal relationships that are natural in video.
+**Success criterion:** 10M parameter adapter achieves >80% of quality from 100M adapter.
 
-### A3: Scale is the Answer
+**Failure mode:** Latent spaces are too different; adapter essentially needs to memorize mappings rather than learn a transform.
 
-Larger models might achieve these benefits without architectural changes.
+---
 
-**Counter-argument:** Even very large models (GPT-4V) cannot currently generate or verify visual predictions.
+### Claim 3: VLM Can Predict Future States in Latent Space
 
-## Key Assumptions
+**Statement:** Given current video + action/question, the VLM (with learned query tokens) produces latents that align with actual future frames.
 
-1. **VLM latents contain sufficient information** for video reconstruction
-2. **Video decoder can be conditioned** on VLM latent space
-3. **LPIPS/perceptual metrics** correlate with prediction quality
-4. **Dataset variety** (COIN, CrossTask) covers relevant scenarios
+**Why this matters:** This is the "imagination" step - can the VLM reason about what comes next?
+
+**Independent Test:**
+```
+Input: Video frames 1-10 + action description
+Process: VLM encodes → Query tokens extract "predicted future" latent
+Ground truth: VLM encoding of actual frames 11-20
+Compare: Predicted latent vs actual future latent
+```
+
+**Metrics:**
+- Cosine similarity between predicted and actual latents
+- Clustering: do predictions land near correct futures in latent space?
+- Action classification: can we recover the action from predicted latents?
+
+**Success criterion:** Predicted latents are closer to correct futures than to random futures (statistically significant).
+
+**Failure mode:** Query tokens just learn to copy current state, or produce "average" futures that don't reflect the specific action.
+
+---
+
+### Claim 4: Pixel Verification Improves Accuracy
+
+**Statement:** Comparing predicted video to actual outcomes provides a signal that improves prediction accuracy.
+
+**Why this matters:** This is the key differentiator from latent-only approaches like V-JEPA.
+
+**Independent Test:**
+```
+Condition A (no verification):
+  Predict once → measure accuracy
+
+Condition B (with verification):
+  Predict → compare to actual → predict again → measure accuracy
+```
+
+**Metrics:**
+- Accuracy improvement from verification loop
+- Correlation: does high LPIPS error predict incorrect predictions?
+- Calibration: does the model "know when it's wrong"?
+
+**Success criterion:** Verification loop improves accuracy by >10% on incorrect predictions.
+
+**Failure mode:** LPIPS doesn't correlate with task-relevant errors (model can be perceptually correct but semantically wrong, or vice versa).
+
+---
+
+## Open Questions (What We Don't Know)
+
+### Q1: Latent Space Alignment
+
+**Question:** VLM latents and video decoder latents were trained on different objectives. How hard is it to align them?
+
+**Risk level:** High - this is the core technical uncertainty.
+
+**Experiments to resolve:**
+1. Visualize both latent spaces (t-SNE/UMAP) - do they have similar structure?
+2. Linear probe: can we predict video decoder latents from VLM latents?
+3. Try multiple adapter architectures (linear, MLP, cross-attention)
+
+### Q2: Information Preservation Through VLM
+
+**Question:** Qwen2-VL merges 4 patches into 1 token. Does this lose spatial information needed for video generation?
+
+**Risk level:** Medium - may require architectural changes.
+
+**Experiments to resolve:**
+1. Compare reconstruction from pre-merge vs post-merge latents
+2. Try extracting from different VLM layers
+3. Measure spatial reconstruction accuracy (object positions, sizes)
+
+### Q3: Temporal Coherence
+
+**Question:** Can we generate temporally coherent video (not just good individual frames)?
+
+**Risk level:** Medium - video decoders handle this, but our conditioning may break it.
+
+**Experiments to resolve:**
+1. Measure frame-to-frame consistency metrics
+2. Human eval of motion smoothness
+3. Compare to baseline video decoder without our conditioning
+
+### Q4: Training Data Requirements
+
+**Question:** How much paired (video, action, outcome) data do we need?
+
+**Risk level:** Low-medium - datasets exist, but scale is unclear.
+
+**Experiments to resolve:**
+1. Learning curves: quality vs dataset size
+2. Transfer: does training on COIN help with CrossTask?
+3. Minimum viable dataset for proof-of-concept
+
+### Q5: The Right Prediction Target
+
+**Question:** Should we predict the next 1 second? 5 seconds? Just the final state?
+
+**Risk level:** Low - empirical question.
+
+**Experiments to resolve:**
+1. Compare different prediction horizons
+2. Measure accuracy vs horizon length
+3. Find the sweet spot for reasoning utility vs generation difficulty
+
+---
+
+## End-to-End Evaluation
+
+Once components are validated, test the full system:
+
+### Primary Benchmark: Action Prediction
+
+**Task:** Given video of initial state + multiple choice actions, predict which action was taken based on outcome.
+
+**Dataset:** Something-Something v2 (object interactions with clear outcomes)
+
+**Baselines:**
+| Baseline | Description |
+|----------|-------------|
+| Text-only VLM | Qwen2-VL answers in text, no video generation |
+| Random | Chance performance |
+| Human | Human accuracy on same task |
+
+**Comparison conditions:**
+| Condition | Description |
+|-----------|-------------|
+| Foresight (ours) | Full system with pixel prediction |
+| Latent-only | Predict in latent space, no pixel generation |
+| No verification | Pixel prediction but no comparison loop |
+
+### Secondary Benchmarks
+
+1. **Physical reasoning:** CLEVRER, Physion (do predictions obey physics?)
+2. **Procedural activities:** COIN, CrossTask (multi-step action sequences)
+3. **Generation quality:** FVD, human preference vs baseline video models
+
+---
 
 ## Falsification Criteria
 
-The hypothesis would be falsified if:
+The hypothesis is **falsified** if any of:
 
-1. Pixel prediction does not improve over text-only baseline
-2. Verification loop does not improve predictions
-3. Training cannot converge to coherent video generation
-4. The approach requires prohibitive compute (>>40GB VRAM)
+1. **Component failures that can't be fixed:**
+   - Claim 1 false: VLM latents fundamentally lack spatial information
+   - Claim 2 false: Adapter can't bridge spaces even with more capacity
+   - Claim 3 false: VLM can't predict futures better than chance
 
-## Evolution of Hypothesis
+2. **System-level failures:**
+   - Full system doesn't beat text-only baseline on action prediction
+   - Pixel prediction doesn't beat latent-only prediction
+   - Verification loop doesn't improve accuracy
 
-### v0.1 (Initial)
-- "Video generation helps reasoning" (too vague)
+3. **Practical failures:**
+   - Requires >80GB VRAM (can't run on available hardware)
+   - Requires >100M training examples (impractical to collect)
+   - Inference takes >10 seconds per prediction (too slow for reasoning)
 
-### v0.2 (Current)
-- Specific architecture (GLP)
-- Measurable claims
-- Clear falsification criteria
+---
 
-### Future Refinements
-- After literature review, may adjust based on:
-  - What prior work has already shown
-  - What gaps remain unexplored
-  - What approaches have been tried and failed
+## Experiment Sequence
+
+Ordered to fail fast and isolate issues:
+
+### Phase 1: Validate Components (Weeks 1-4)
+
+| Week | Experiment | Go/No-Go |
+|------|------------|----------|
+| 1 | Extract Qwen2-VL latents, visualize | Do latents look reasonable? |
+| 2 | Train reconstruction adapter (real video → real video) | LPIPS < 0.4? |
+| 3 | Train future prediction (video → future latent) | Better than random? |
+| 4 | End-to-end generation (video + action → predicted video) | Coherent output? |
+
+### Phase 2: Measure Claims (Weeks 5-8)
+
+| Week | Experiment | Measures |
+|------|------------|----------|
+| 5-6 | Action prediction benchmark | Claims 1-3 |
+| 7 | Add verification loop | Claim 4 |
+| 8 | Compare to baselines | Primary hypothesis |
+
+### Phase 3: Ablations & Analysis (Weeks 9-12)
+
+- What components matter most?
+- Where do failures come from?
+- What's the minimum viable system?
+
+---
+
+## Alternative Hypotheses to Test Against
+
+### A1: Latent Prediction is Sufficient (V-JEPA position)
+
+**Their claim:** Predicting in latent space is more efficient and equally effective.
+
+**Our counter:** Latent predictions can't be verified against reality.
+
+**Test:** Compare latent-only vs pixel prediction on tasks requiring physical accuracy.
+
+### A2: Text Reasoning is Sufficient
+
+**Their claim:** Better prompting/CoT achieves similar results without generation.
+
+**Our counter:** Text can't represent spatial/temporal relationships precisely.
+
+**Test:** Compare our system vs CoT-prompted VLM on spatial reasoning tasks.
+
+### A3: Just Scale the VLM
+
+**Their claim:** Larger VLMs will naturally develop world models.
+
+**Our counter:** Even GPT-4V can't generate or verify visual predictions.
+
+**Test:** Compare our 7B system vs larger text-only VLMs (70B+).
+
+---
+
+## Evolution Log
+
+| Version | Date | Changes |
+|---------|------|---------|
+| v0.1 | Initial | "Video generation helps reasoning" (vague) |
+| v0.2 | Initial | Specific GLP architecture, measurable claims |
+| v0.3 | 2025-01-18 | Added component-level tests, open questions, experiment sequence |
 
 ## Related Documents
 
 - [Paper Index](../papers/index.md)
 - [Product Requirements](../../PRD.md)
 - [Research Overview](../README.md)
-
-## Changelog
-
-| Date | Change |
-|------|--------|
-| 2024-XX-XX | Initial hypothesis formulation |
