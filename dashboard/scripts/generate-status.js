@@ -14,9 +14,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../..');
 
 const EXPERIMENTS = [
-  { id: 'c1-vlm-latent-sufficiency', name: 'C1: VLM Latent Sufficiency', phase: 1 },
+  // Phase 1: Original experiments (C1, Q2 pivoted, Q1 passed)
+  { id: 'c1-vlm-latent-sufficiency', name: 'C1: VLM Latent Sufficiency', phase: 1, pivoted: true },
   { id: 'q1-latent-alignment', name: 'Q1: Latent Space Alignment', phase: 1 },
-  { id: 'q2-information-preservation', name: 'Q2: Information Preservation', phase: 1 },
+  { id: 'q2-information-preservation', name: 'Q2: Information Preservation', phase: 1, pivoted: true },
+  // Phase 1b: Pivot experiment (replaces C1/Q2 for Gate 1)
+  { id: 'p2-hybrid-encoder', name: 'P2: Hybrid Encoder (DINOv2 + VLM)', phase: 1 },
+  // Phase 2+
   { id: 'c2-adapter-bridging', name: 'C2: Adapter Bridging', phase: 2 },
   { id: 'q3-temporal-coherence', name: 'Q3: Temporal Coherence', phase: 2 },
   { id: 'c3-future-prediction', name: 'C3: Future Prediction', phase: 3 },
@@ -173,7 +177,8 @@ function generateStatus() {
     {
       id: 'gate_1_reconstruction',
       name: 'Gate 1: Reconstruction',
-      experiments: ['c1-vlm-latent-sufficiency', 'q1-latent-alignment', 'q2-information-preservation'],
+      // Updated after pivot: Q1 passed, P2 replaces failed C1/Q2 spatial requirements
+      experiments: ['q1-latent-alignment', 'p2-hybrid-encoder'],
       unlocks: 'Phase 2 (Adapter Training)',
     },
     {

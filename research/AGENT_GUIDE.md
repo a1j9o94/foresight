@@ -20,10 +20,12 @@ Progress requires passing gates. Know which gate your experiment belongs to:
 
 | Gate | Experiments | Unlocks |
 |------|-------------|---------|
-| **Gate 1: Reconstruction** | C1, Q1, Q2 | Phase 2 (Bridging) |
+| **Gate 1: Reconstruction** | Q1, **P2** | Phase 2 (Bridging) |
 | **Gate 2: Bridging** | C2, Q3 | Phase 3 (Prediction) |
 | **Gate 3: Prediction** | C3, Q4, Q5 | Phase 4 (Verification) |
 | **Gate 4: Verification** | C4 | Final evaluation |
+
+> **Note:** Gate 1 was updated after C1/Q2 pivoted due to spatial information loss. P2 (Hybrid Encoder) replaces the spatial validation requirements. Q1 (alignment) passed and remains.
 
 ---
 
@@ -33,13 +35,14 @@ Progress requires passing gates. Know which gate your experiment belongs to:
 
 | Experiment | Metric | Target | Acceptable | Failure |
 |------------|--------|--------|------------|---------|
-| **C1** | LPIPS | < 0.25 | < 0.35 | > 0.45 |
-| **C1** | SSIM | > 0.85 | > 0.75 | < 0.65 |
-| **C1** | Spatial IoU | > 0.75 | > 0.6 | < 0.5 |
+| **P2** | Spatial IoU | > 0.70 | > 0.60 | < 0.50 |
+| **P2** | LPIPS | < 0.25 | < 0.35 | > 0.45 |
+| **P2** | mAP@0.5 | > 0.50 | > 0.40 | < 0.20 |
+| **P2** | Latency overhead | < 15% | < 25% | > 50% |
 | **Q1** | Linear Probe R² | > 0.6 | > 0.5 | < 0.4 |
 | **Q1** | CKA | > 0.5 | > 0.4 | < 0.3 |
-| **Q2** | Bbox IoU | > 0.8 | > 0.7 | < 0.5 |
-| **Q2** | Edge F1 | > 0.7 | > 0.6 | < 0.4 |
+| ~~C1~~ | ~~LPIPS~~ | - | - | *Pivoted* |
+| ~~Q2~~ | ~~Bbox IoU~~ | - | - | *Pivoted* |
 | **C2** | Param efficiency | 10M ≥ 80% of 100M | 10M ≥ 70% | < 60% |
 | **Q3** | Temporal consistency | > 0.8 | > 0.7 | < 0.5 |
 | **C3** | Cosine sim @ t+5 | > 0.75 | > 0.65 | < 0.5 |

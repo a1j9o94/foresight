@@ -73,24 +73,26 @@ High-level summary of Foresight experiment results. For detailed findings, see i
 
 ## Decision Gates
 
-### Gate 1: Reconstruction
-**Status:** ⛔ BLOCKED
+### Gate 1: Reconstruction (Updated)
+**Status:** 🔄 IN PROGRESS
 
 | Experiment | Status | Recommendation |
 |------------|--------|----------------|
-| C1 - VLM Latent Sufficiency | ✅ Complete | **PIVOT** |
 | Q1 - Latent Alignment | ✅ Complete | **PROCEED** |
-| Q2 - Information Preservation | ✅ Complete | **PIVOT** |
+| **P2 - Hybrid Encoder** | 🔄 Running | Pending |
 
-**Gate Progress:** 1/3 proceed
+**Gate Progress:** 1/2 proceed
 
-**Blocker:** Spatial information loss in VLM embeddings (C1, Q2 both failed spatial metrics)
+**Gate Requirements Updated:** C1 and Q2 provided valuable "pivot" findings but are no longer gate requirements. P2 (Hybrid Encoder with DINOv2) replaces the spatial validation that C1/Q2 failed.
 
-**Next Steps:** Evaluate architectural pivot options:
-1. Pre-merge ViT features directly
-2. Hybrid encoder (VLM semantics + separate spatial encoder)
-3. Spatial enhancement modules
-4. Alternative VLM architecture
+### Pivoted Experiments (Informational)
+
+| Experiment | Outcome | Key Finding |
+|------------|---------|-------------|
+| C1 - VLM Latent Sufficiency | PIVOT | Spatial IoU = 0.559 (failed > 0.6) |
+| Q2 - Information Preservation | PIVOT | mAP@0.5 = 0.001 (spatial info destroyed) |
+
+These experiments successfully completed and provided critical insights that led to the P2 pivot.
 
 ---
 

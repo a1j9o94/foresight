@@ -167,20 +167,24 @@ Progress through phases requires passing gates:
 
 | Gate | Experiments Required | Unlocks |
 |------|---------------------|---------|
-| `gate_1_reconstruction` | C1, Q1, Q2 | Phase 2 (Bridging) |
+| `gate_1_reconstruction` | Q1, **P2** | Phase 2 (Bridging) |
 | `gate_2_bridging` | C2, Q3 | Phase 3 (Prediction) |
 | `gate_3_prediction` | C3, Q4, Q5 | Phase 4 (Verification) |
 | `gate_4_verification` | C4 | Final evaluation |
+
+> **Note:** Gate 1 updated after C1/Q2 pivoted. P2 (Hybrid Encoder) replaces spatial validation. See `research/FINDINGS.md` for details.
 
 ### Success Criteria Quick Reference
 
 | Experiment | Key Metric | Threshold |
 |------------|-----------|-----------|
-| C1 | LPIPS | < 0.35 |
-| C1 | Spatial IoU | > 0.6 |
+| **P2** | Spatial IoU | > 0.6 |
+| **P2** | LPIPS | < 0.35 |
+| **P2** | mAP@0.5 | > 0.4 |
 | C2 | Param efficiency | 10M achieves >80% of 100M |
 | C3 | Cosine similarity | > 0.65 at t+5 |
 | C4 | Accuracy improvement | > 10% from verification |
+| ~~C1~~ | ~~Spatial IoU~~ | *Pivoted - replaced by P2* |
 
 ### When to Flag for Human Review
 
