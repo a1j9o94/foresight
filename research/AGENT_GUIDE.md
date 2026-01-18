@@ -4,6 +4,51 @@
 
 ---
 
+## Project Context
+
+**Foresight** tests whether AI systems can benefit from generating pixel-level video predictions as part of their reasoning process. The core hypothesis: an AI that can "see" predicted outcomes will make better decisions than one reasoning purely in text.
+
+**Architecture:** We connect a frozen VLM (Qwen2.5-VL) to a video decoder (LTX-Video) via a small trainable adapter (~10-50M params). The VLM provides semantic understanding; the decoder generates predicted video frames.
+
+**Your role:** Run experiments that validate (or invalidate) whether this architecture can work.
+
+---
+
+## Decision Gates
+
+Progress requires passing gates. Know which gate your experiment belongs to:
+
+| Gate | Experiments | Unlocks |
+|------|-------------|---------|
+| **Gate 1: Reconstruction** | C1, Q1, Q2 | Phase 2 (Bridging) |
+| **Gate 2: Bridging** | C2, Q3 | Phase 3 (Prediction) |
+| **Gate 3: Prediction** | C3, Q4, Q5 | Phase 4 (Verification) |
+| **Gate 4: Verification** | C4 | Final evaluation |
+
+---
+
+## Success Criteria Reference
+
+**Your experiment MUST report these metrics.** The runner auto-assesses against thresholds.
+
+| Experiment | Metric | Target | Acceptable | Failure |
+|------------|--------|--------|------------|---------|
+| **C1** | LPIPS | < 0.25 | < 0.35 | > 0.45 |
+| **C1** | SSIM | > 0.85 | > 0.75 | < 0.65 |
+| **C1** | Spatial IoU | > 0.75 | > 0.6 | < 0.5 |
+| **Q1** | Linear Probe R² | > 0.6 | > 0.5 | < 0.4 |
+| **Q1** | CKA | > 0.5 | > 0.4 | < 0.3 |
+| **Q2** | Bbox IoU | > 0.8 | > 0.7 | < 0.5 |
+| **Q2** | Edge F1 | > 0.7 | > 0.6 | < 0.4 |
+| **C2** | Param efficiency | 10M ≥ 80% of 100M | 10M ≥ 70% | < 60% |
+| **Q3** | Temporal consistency | > 0.8 | > 0.7 | < 0.5 |
+| **C3** | Cosine sim @ t+5 | > 0.75 | > 0.65 | < 0.5 |
+| **Q4** | Data efficiency | 10k ≥ 80% of 100k | ≥ 70% | < 60% |
+| **Q5** | Horizon @ 0.5 cos | > 10 frames | > 5 frames | < 3 frames |
+| **C4** | Accuracy improvement | > 15% | > 10% | < 5% |
+
+---
+
 ## Quick Start (5 minutes)
 
 ### 1. Check Your Assignment
@@ -377,6 +422,18 @@ There are only two outcomes for an experiment:
 - Infrastructure failures
 - Unclear requirements
 
+### When to Flag for Human Review
+
+Add `requires_human_review: true` to your results.yaml if:
+
+- **Confidence is "low"** - Metrics are noisy or inconclusive
+- **Results are unexpected** - Contradicts prior findings or theory
+- **Pivot decision needed** - Your experiment recommends pivoting the approach
+- **Edge cases found** - Discovered issues that affect interpretation
+- **Borderline metrics** - Values very close to thresholds (within 5%)
+
+Humans will prioritize reviewing flagged experiments before proceeding to next gate.
+
 ### Important: "Pivot" is NOT a failure
 
 A `pivot` recommendation means:
@@ -430,20 +487,6 @@ Check your handler file for:
 - Check `runner.log_metrics()` was called
 - Ensure handler returns proper format
 - Check W&B dashboard for the run: https://wandb.ai/a1j9o94/foresight
-
----
-
-## Success Criteria Reference
-
-From `infra/modal/runner/config.py`:
-
-| Experiment | Metric | Target | Acceptable | Failure |
-|------------|--------|--------|------------|---------|
-| C1 | LPIPS | < 0.25 | < 0.35 | > 0.45 |
-| C1 | SSIM | > 0.85 | > 0.75 | < 0.65 |
-| C1 | Spatial IoU | > 0.75 | > 0.6 | < 0.5 |
-
-Your handler should report these metrics. The runner will automatically assess whether criteria are met.
 
 ---
 
