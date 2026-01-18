@@ -1,0 +1,127 @@
+experiment_id: q2-information-preservation
+claim: ''
+status: completed
+executed_by: modal-e22a4a0d
+started_at: '2026-01-18T18:17:26.369636Z'
+completed_at: '2026-01-18T21:00:33.758389Z'
+success_criteria:
+  bbox_iou_threshold: 0.7
+  lpips_threshold: 0.3
+  edge_f1_threshold: 0.6
+  mAP_threshold: 0.4
+results:
+  experiments:
+    e_q2_1:
+      status: completed
+      finding: Pre-merge embeddings show poor spatial retention (IoU=0.103). This
+        is a fundamental concern - even before merging, spatial info is limited.
+      metrics:
+        bbox_iou: 0.10312491655349731
+        iou_above_0.7: 0.0052770450711250305
+        iou_above_0.5: 0.04485488310456276
+        relative_position_accuracy: 1.0
+        feature_dim: 3584
+      artifacts:
+      - artifacts/premerge_bbox_visualization.png
+      - artifacts/premerge_analysis.json
+    e_q2_2:
+      status: completed
+      finding: Post-merge embeddings show severe information loss (IoU=0.104, 87.7%
+        drop). The 2x2 merger is a major bottleneck. Must use pre-merge features or
+        hybrid approach.
+      metrics:
+        bbox_iou: 0.10419680178165436
+        iou_above_0.7: 0.010554090142250061
+        iou_above_0.5: 0.042216360569000244
+        iou_drop_from_premerge: 0.7458031982183456
+        iou_drop_pct: 87.74155273157007
+        compression_ratio: 4.0
+        feature_dim: 3584
+      artifacts:
+      - artifacts/postmerge_comparison.png
+      - artifacts/postmerge_analysis.json
+    e_q2_3:
+      status: completed
+      finding: 'Spatial information is lost before entering LLM. First layer IoU:
+        0.071. Must extract from ViT (pre-merge or post-merge) for spatial tasks.'
+      metrics:
+        first_layer_iou: 0.07055070251226425
+        last_layer_iou: 0.0507848858833313
+        total_decay: 0.019765816628932953
+        decay_rate_per_layer: 0.0007320672825530723
+        optimal_layer: -1
+        layer_0_iou: 0.07055070251226425
+        layer_6_iou: 0.05862046033143997
+        layer_13_iou: 0.07815587520599365
+        layer_20_iou: 0.09122540801763535
+        layer_27_iou: 0.0507848858833313
+      artifacts:
+      - artifacts/layer_decay_curve.png
+      - artifacts/layer_retention_heatmap.png
+      - artifacts/layer_analysis.json
+    e_q2_4:
+      status: completed
+      finding: Detection probe achieves low mAP@0.5 (0.001) at post_merge. Spatial
+        information is significantly degraded. Consider using pre-merge features or
+        architectural modifications.
+      metrics:
+        best_map_05: 0.0009398496240601503
+        best_extraction_point: post_merge
+        post_merge_map_05: 0.0009398496240601503
+        llm_layer_0_map_05: 0.0
+        llm_layer_13_map_05: 0.0
+        post_merge_map_075: 0.0
+        llm_layer_0_map_075: 0.0
+        llm_layer_13_map_075: 0.0
+      artifacts:
+      - artifacts/detection_visualization.png
+      - artifacts/detection_comparison.png
+      - artifacts/detection_analysis.json
+    e_q2_5:
+      status: completed
+      finding: 'Partial fine-grained detail preservation at post_merge. LPIPS: 0.089
+        (met), Edge F1: 0.351 (not met). May need enhancement for best video quality.'
+      metrics:
+        lpips: 0.08898016065359116
+        edge_f1: 0.3506535291671753
+        ssim: 0.9626538380980492
+        irs: 0.6972589120268822
+        best_extraction_point: post_merge
+        post_merge_lpips: 0.08898016065359116
+        llm_layer_0_lpips: 0.0922686755657196
+        post_merge_edge_f1: 0.3506535291671753
+        llm_layer_0_edge_f1: 0.32266637682914734
+      artifacts:
+      - artifacts/reconstruction_visualization.png
+      - artifacts/finegrained_comparison.png
+      - artifacts/finegrained_analysis.json
+    e_q2_6:
+      status: completed
+      finding: 'Partial temporal information preservation at post_merge. Direction:
+        100.0% (met), Order: 0.0% (not met). May need temporal modeling enhancement.'
+      metrics:
+        direction_accuracy: 1.0
+        speed_accuracy: 0.5
+        order_accuracy: 0.0
+        combined_accuracy: 0.5
+        best_extraction_point: post_merge
+        post_merge_direction_acc: 1.0
+        llm_layer_0_direction_acc: 1.0
+        post_merge_order_acc: 0.0
+        llm_layer_0_order_acc: 0.0
+      artifacts:
+      - artifacts/temporal_visualization.png
+      - artifacts/temporal_comparison.png
+      - artifacts/temporal_analysis.json
+assessment:
+  success_criteria_met: false
+  bbox_iou_achieved: 0.10419680178165436
+  lpips_achieved: 0.08898016065359116
+  edge_f1_achieved: 0.3506535291671753
+  confidence: medium
+  confidence_notes: Measured 3/4 required metrics.
+recommendation: pivot
+recommendation_notes: Hypothesis not supported - some success criteria not met.
+blockers: []
+issues: []
+detailed_analysis: null

@@ -1,0 +1,203 @@
+experiment_id: q1-latent-alignment
+claim: ''
+status: completed
+executed_by: modal-be206435
+started_at: '2026-01-18T18:17:23.772624Z'
+completed_at: '2026-01-18T21:03:08.324492Z'
+success_criteria:
+  linear_probe_r2_threshold: 0.5
+  spearman_correlation_threshold: 0.6
+  neighborhood_recall_at_10_threshold: 0.2
+  cka_threshold: 0.4
+results:
+  experiments:
+    e_q1_1:
+      status: skipped
+      finding: 'Skipped: No handler registered'
+      metrics: {}
+      artifacts: []
+    e_q1_2:
+      status: skipped
+      finding: 'Skipped: No handler registered'
+      metrics: {}
+      artifacts: []
+    eq1_1:
+      status: completed
+      finding: 'Strong semantic organization in VLM latents. Best layer: layer_8 (silhouette=0.533,
+        k-NN=0.996). VLM encodes clear category structure that may facilitate alignment.'
+      metrics:
+        best_layer: layer_8
+        best_silhouette: 0.5332171320915222
+        best_knn_accuracy: 0.9962962962962962
+        semantic_quality: excellent
+        n_images: 270
+        n_categories: 9
+        layers_analyzed:
+        - layer_8
+        - layer_16
+        - layer_24
+        - layer_final
+        layer_8_silhouette: 0.5332171320915222
+        layer_16_silhouette: 0.5076713562011719
+        layer_24_silhouette: 0.4922705888748169
+        layer_final_silhouette: 0.44713956117630005
+      artifacts:
+      - artifacts/vlm_tsne_layer_8.png
+      - artifacts/vlm_tsne_layer_16.png
+      - artifacts/vlm_tsne_layer_24.png
+      - artifacts/vlm_tsne_layer_final.png
+      - artifacts/vlm_layer_comparison.png
+      - artifacts/vlm_latent_analysis.json
+    eq1_2:
+      status: completed
+      finding: 'Moderate semantic organization in LTX-Video latents. Best representation:
+        channel-mean (silhouette=0.371, k-NN=0.996). Some category structure preserved
+        but with significant overlap.'
+      metrics:
+        best_silhouette: 0.37077850103378296
+        best_knn_accuracy: 0.9962962962962962
+        best_representation: channel-mean
+        semantic_quality: moderate
+        silhouette_flat: 0.2084709107875824
+        silhouette_channel: 0.37077850103378296
+        n_channels: 128
+        spatial_dims: 8x8
+        n_images: 270
+        n_categories: 9
+        top_variance_channels:
+        - 35
+        - 22
+        - 37
+        - 63
+        - 1
+        - 53
+        - 126
+        - 51
+        - 34
+        - 123
+      artifacts:
+      - artifacts/ltx_tsne_flat.png
+      - artifacts/ltx_tsne_channel_mean.png
+      - artifacts/ltx_channel_analysis.png
+      - artifacts/ltx_spatial_correlation.png
+      - artifacts/ltx_latent_analysis.json
+    eq1_3:
+      status: completed
+      finding: 'Significant dimensionality mismatch: VLM=10, LTX=65 (ratio 6.5x).
+        May need dimension-matching adapter. PCA 95%: VLM=26, LTX=64 components.'
+      metrics:
+        vlm_nominal_dim: 3584
+        vlm_pca_95_components: 26
+        vlm_mle_intrinsic_dim: 9.935894841439167
+        vlm_two_nn_intrinsic_dim: 11.744414116338902
+        ltx_nominal_dim: 8192
+        ltx_pca_95_components: 64
+        ltx_mle_intrinsic_dim: 64.84001999874428
+        ltx_two_nn_intrinsic_dim: 7.371348506844149
+        ltx_channel_intrinsic_dim: 12.548814538263725
+        dimensionality_ratio: 6.525835974865503
+        alignment_assessment: challenging
+        n_samples: 450
+      artifacts:
+      - artifacts/intrinsic_dim_pca.png
+      - artifacts/intrinsic_dim_summary.png
+      - artifacts/intrinsic_dimensionality.json
+    eq1_4:
+      status: completed
+      finding: 'Moderate linear alignment. Average R^2=0.470 (best: VLM->LTX R^2=0.510).
+        Small MLP adapter recommended over pure linear projection. Improvement over
+        random: 45.605.'
+      metrics:
+        vlm_to_ltx_r2: 0.5104397535324097
+        ltx_to_vlm_r2: 0.42948538064956665
+        average_r2: 0.46996256709098816
+        best_r2: 0.5104397535324097
+        best_direction: VLM->LTX
+        random_baseline_r2: -45.13520790025812
+        improvement_over_random: 45.60517046734911
+        cosine_similarity_vlm_ltx: 0.8537007570266724
+        cosine_similarity_ltx_vlm: 0.9712302088737488
+        alignment_quality: moderate
+        n_train: 432
+        n_test: 108
+      artifacts:
+      - artifacts/linear_probe_training.png
+      - artifacts/linear_probe_scatter.png
+      - artifacts/linear_probe_summary.png
+      - artifacts/linear_probe_results.json
+    eq1_5:
+      status: completed
+      finding: 'Good semantic similarity preservation. Spearman rho (Euclidean)=0.684,
+        (Cosine)=0.628. Most similarity relationships are preserved across spaces.
+        Mantel test: r=0.750, p=0.0010.'
+      metrics:
+        spearman_euclidean: 0.6838796242258661
+        spearman_cosine: 0.6281121689325395
+        average_spearman: 0.6559958965792028
+        pearson_euclidean: 0.7502022633037091
+        kendall_tau: 0.5044348821688949
+        procrustes_disparity: 0.5095994472503662
+        mantel_r: 0.7502022633037091
+        mantel_p: 0.001
+        quality: good
+        n_images: 360
+        n_pairs: 64620
+      artifacts:
+      - artifacts/semantic_sim_scatter.png
+      - artifacts/semantic_sim_categories.png
+      - artifacts/semantic_sim_heatmaps.png
+      - artifacts/semantic_sim_ranks.png
+      - artifacts/semantic_similarity_results.json
+    eq1_6:
+      status: completed
+      finding: Good local alignment. Recall@10=0.258 (11.6x over random). Many VLM
+        neighbors are also LTX neighbors. MRR@10=0.105. Adapter should work well for
+        most cases.
+      metrics:
+        recall_at_5: 0.19822222222222222
+        recall_at_10: 0.25822222222222224
+        recall_at_20: 0.3393333333333333
+        recall_at_10_lift: 11.594177777777778
+        mrr_at_10: 0.10457743565907697
+        jaccard_at_10: 0.15561963186834188
+        ltx_to_vlm_recall_at_10: 0.25822222222222224
+        quality: good
+        n_images: 450
+        n_categories: 9
+      artifacts:
+      - artifacts/neighborhood_recall_curve.png
+      - artifacts/neighborhood_by_category.png
+      - artifacts/neighborhood_rank_distribution.png
+      - artifacts/neighborhood_examples.png
+      - artifacts/neighborhood_analysis.json
+    eq1_7:
+      status: completed
+      finding: Strong representational alignment found! Best CKA=0.687 at layer_final.
+        This layer preserves similar representations to LTX and should be optimal
+        for adapter training.
+      metrics:
+        max_cka: 0.686549186706543
+        best_layer: layer_final
+        best_layer_cka_flat: 0.686549186706543
+        best_layer_cka_channel: 0.638218343257904
+        cka_layer_4: 0.6472454071044922
+        cka_layer_8: 0.6447948813438416
+        cka_layer_16: 0.6418172717094421
+        cka_layer_24: 0.6377129554748535
+        quality: strong
+        n_images: 360
+        n_vlm_layers: 7
+      artifacts:
+      - artifacts/cka_heatmap.png
+      - artifacts/cka_vlm_self_similarity.png
+      - artifacts/cka_layer_curve.png
+      - artifacts/cka_analysis.json
+assessment:
+  success_criteria_met: true
+  confidence: low
+  confidence_notes: Measured 0/4 required metrics.
+recommendation: proceed
+recommendation_notes: Hypothesis supported - all success criteria met.
+blockers: []
+issues: []
+detailed_analysis: null

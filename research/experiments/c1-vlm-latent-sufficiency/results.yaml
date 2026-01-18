@@ -1,0 +1,101 @@
+experiment_id: c1-vlm-latent-sufficiency
+claim: ''
+status: completed
+executed_by: modal-64b44f9e
+started_at: '2026-01-18T20:53:55.745933Z'
+completed_at: '2026-01-18T20:58:57.537869Z'
+success_criteria:
+  lpips_threshold: 0.35
+  ssim_threshold: 0.75
+  spatial_iou_threshold: 0.6
+results:
+  experiments:
+    e1_1:
+      status: completed
+      finding: Strong semantic clustering (silhouette=0.828). Latents clearly encode
+        category information.
+      metrics:
+        silhouette_score: 0.8283265829086304
+        n_images: 60
+        n_categories: 3
+        latent_dim: 3584
+      artifacts:
+      - artifacts/tsne_visualization.png
+      - artifacts/latent_analysis.json
+    e1_2:
+      status: completed
+      finding: Linear probe achieves acceptable reconstruction quality (LPIPS=0.329
+        < 0.35, SSIM=0.914 > 0.75). VLM latents contain sufficient information for
+        basic reconstruction.
+      metrics:
+        lpips: 0.32934254586696626
+        ssim: 0.9141219854354858
+        psnr: 13.623881192574686
+        mse: 0.043412208557128906
+      artifacts:
+      - artifacts/reconstruction_grid.png
+      - artifacts/reconstruction_metrics.json
+    e1_3:
+      status: completed
+      finding: 'Minimal information loss from token merging (LPIPS gap=-1.199). Post-merge
+        latents are sufficient for reconstruction. Pre-merge: LPIPS=1.541, Post-merge:
+        LPIPS=0.343. Recommendation: Use post-merge latents for simplicity'
+      metrics:
+        premerge_lpips: 1.5413882583379745
+        postmerge_lpips: 0.3426447167992592
+        lpips_gap: -1.1987435415387153
+        premerge_ssim: 0.01143769919872284
+        postmerge_ssim: 0.9094873666763306
+        ssim_gap: -0.8980496674776077
+      artifacts:
+      - artifacts/premerge_postmerge_comparison.png
+      - artifacts/premerge_postmerge_metrics.json
+    e1_4:
+      status: completed
+      finding: 'Insufficient spatial information (IoU=0.559 < 0.6). VLM latents may
+        not preserve precise positions needed for reconstruction. Center error: 0.090,
+        Size error: 0.073. Consider alternative approaches or pre-merge latents.'
+      metrics:
+        spatial_iou: 0.558868408203125
+        iou_above_0.5: 0.62
+        iou_above_0.75: 0.1
+        center_error: 0.09008638560771942
+        size_error: 0.07280531525611877
+      artifacts:
+      - artifacts/localization_results.png
+      - artifacts/localization_metrics.json
+    e1_5:
+      status: completed
+      finding: Full pipeline achieves target reconstruction quality (LPIPS=0.264 <
+        0.35, SSIM=0.943 > 0.75). VLM latents can successfully drive video decoder
+        for reconstruction.
+      metrics:
+        lpips: 0.26377292536199093
+        ssim: 0.942703127861023
+        psnr: 18.47074228793318
+        mse: 0.014220857061445713
+      artifacts:
+      - artifacts/full_reconstruction_grid.png
+      - artifacts/full_reconstruction_metrics.json
+    e1_6:
+      status: completed
+      finding: 'Best layer: 7 (LPIPS=0.371) | No tested capacity achieved target LPIPS
+        < 0.35 | All data sizes needed for acceptable quality'
+      metrics:
+        best_layer_idx: 7
+        best_layer_lpips: 0.3712728303670883
+      artifacts:
+      - artifacts/ablation_results.png
+      - artifacts/ablation_details.json
+assessment:
+  success_criteria_met: false
+  lpips_achieved: 0.26377292536199093
+  ssim_achieved: 0.942703127861023
+  spatial_iou_achieved: 0.558868408203125
+  confidence: high
+  confidence_notes: Measured 3/3 required metrics.
+recommendation: pivot
+recommendation_notes: Hypothesis not supported - some success criteria not met.
+blockers: []
+issues: []
+detailed_analysis: null
