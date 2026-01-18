@@ -15,8 +15,8 @@ Master list of papers reviewed for the Foresight project.
 
 | Status | Paper | Year | Notes |
 |--------|-------|------|-------|
-| `[!]` | LTX-Video | 2024 | Primary video decoder candidate |
-| `[!]` | HunyuanVideo | 2024 | High-quality video decoder option |
+| `[x]` | [LTX-Video](ltx-video.md) | 2024 | Primary video decoder - real-time DiT, 1.9B params |
+| `[x]` | [HunyuanVideo](hunyuan-video.md) | 2024 | High-quality decoder - 13B params, cinematic quality |
 | `[ ]` | Stable Video Diffusion | 2023 | Image-to-video baseline |
 | `[ ]` | Sora Technical Report | 2024 | Large-scale video generation |
 
@@ -24,8 +24,9 @@ Master list of papers reviewed for the Foresight project.
 
 | Status | Paper | Year | Notes |
 |--------|-------|------|-------|
-| `[!]` | JEPA (I-JEPA, V-JEPA) | 2023-24 | Latent prediction approach |
-| `[ ]` | Dreamer v3 | 2023 | Model-based RL world model |
+| `[x]` | [PlaNet / Latent Space Dynamics](latent-space-dynamics.md) | 2019 | Foundational latent dynamics for planning |
+| `[x]` | [V-JEPA](v-jepa.md) | 2024 | Latent video prediction - contrast with pixel grounding |
+| `[x]` | [Dreamer v3](dreamer-v3.md) | 2023 | World model RL - chain-of-images reasoning proof |
 | `[ ]` | IRIS | 2023 | Discrete world model for Atari |
 | `[ ]` | Genie | 2024 | World model from video |
 
@@ -33,7 +34,7 @@ Master list of papers reviewed for the Foresight project.
 
 | Status | Paper | Year | Notes |
 |--------|-------|------|-------|
-| `[!]` | Qwen2-VL | 2024 | Our VLM backbone |
+| `[x]` | [Qwen2-VL](qwen2-vl.md) | 2024 | Our VLM backbone - 1536-dim visual embeddings |
 | `[ ]` | LLaVA-NeXT | 2024 | Alternative VLM |
 | `[ ]` | InternVL 2 | 2024 | Strong video understanding |
 | `[ ]` | Video-LLaVA | 2024 | Video-specific VLM |
@@ -76,13 +77,18 @@ Master list of papers reviewed for the Foresight project.
 
 *Papers added in the last update*
 
-(none yet)
+- [LTX-Video](ltx-video.md) - Real-time video generation, primary decoder candidate
+- [HunyuanVideo](hunyuan-video.md) - High-quality video generation for production
+- [Qwen2-VL](qwen2-vl.md) - Vision-language backbone with extractable latents
+- [V-JEPA](v-jepa.md) - Latent prediction approach (contrast with our pixel grounding)
+- [Dreamer v3](dreamer-v3.md) - World model proving chain-of-images reasoning works
+- [PlaNet / Latent Space Dynamics](latent-space-dynamics.md) - Foundational latent dynamics
 
 ## To Review Next
 
 *Priority queue for paper review*
 
-1. LTX-Video - Primary video decoder
-2. Qwen2-VL - Our VLM backbone
-3. V-JEPA - Latent video prediction
-4. COIN dataset - Training data source
+1. IRIS - Discrete world model, different approach to imagination
+2. Genie - World model learned from video (no actions)
+3. COIN dataset - Training data source
+4. LPIPS - Verification metric we'll use
