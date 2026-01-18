@@ -1,0 +1,110 @@
+# W&B run configurations for each experiment type
+# Use with: wandb.init(**config['c1'])
+
+c1_vlm_latent_sufficiency:
+  project: foresight
+  job_type: experiment
+  tags:
+    - c1
+    - vlm-latents
+    - reconstruction
+  config:
+    experiment_id: c1-vlm-latent-sufficiency
+    claim: "VLM latents contain sufficient information"
+    phase: 1
+
+c2_adapter_bridging:
+  project: foresight
+  job_type: experiment
+  tags:
+    - c2
+    - adapter
+    - bridging
+  config:
+    experiment_id: c2-adapter-bridging
+    claim: "Small adapter can bridge latent spaces"
+    phase: 2
+
+c3_future_prediction:
+  project: foresight
+  job_type: experiment
+  tags:
+    - c3
+    - future-prediction
+    - query-tokens
+  config:
+    experiment_id: c3-future-prediction
+    claim: "VLM can predict future states"
+    phase: 3
+
+c4_pixel_verification:
+  project: foresight
+  job_type: experiment
+  tags:
+    - c4
+    - verification
+    - lpips
+  config:
+    experiment_id: c4-pixel-verification
+    claim: "Pixel verification improves accuracy"
+    phase: 4
+
+q1_latent_alignment:
+  project: foresight
+  job_type: exploration
+  tags:
+    - q1
+    - latent-space
+    - alignment
+  config:
+    experiment_id: q1-latent-alignment
+    question: "How hard is latent space alignment?"
+    phase: 1
+
+q2_information_preservation:
+  project: foresight
+  job_type: exploration
+  tags:
+    - q2
+    - information
+    - token-merging
+  config:
+    experiment_id: q2-information-preservation
+    question: "Does VLM preserve spatial information?"
+    phase: 1
+
+q3_temporal_coherence:
+  project: foresight
+  job_type: exploration
+  tags:
+    - q3
+    - temporal
+    - coherence
+  config:
+    experiment_id: q3-temporal-coherence
+    question: "Can we maintain temporal coherence?"
+    phase: 2
+
+q4_training_data:
+  project: foresight
+  job_type: exploration
+  tags:
+    - q4
+    - data
+    - scaling
+  config:
+    experiment_id: q4-training-data
+    question: "How much training data do we need?"
+    phase: 3
+
+q5_prediction_horizon:
+  project: foresight
+  job_type: exploration
+  tags:
+    - q5
+    - horizon
+    - ablation
+  config:
+    experiment_id: q5-prediction-horizon
+    question: "What prediction horizon is optimal?"
+    phase: 3

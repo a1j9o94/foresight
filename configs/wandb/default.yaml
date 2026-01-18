@@ -1,0 +1,34 @@
+# Default W&B configuration for Foresight experiments
+# Copy to experiment directory and customize as needed
+
+project: foresight
+# entity: <your-wandb-username-or-team>  # Uncomment and set
+
+# Run settings
+name: null  # Auto-generated if null
+tags:
+  - research
+  - glp
+
+# Logging settings
+settings:
+  console: wrap
+  quiet: false
+
+# What to log
+log:
+  - metrics
+  - config
+  - system
+
+# Artifact settings
+artifacts:
+  checkpoints: true
+  plots: true
+
+# Sweep defaults (for hyperparameter search)
+sweep:
+  method: bayes
+  metric:
+    name: val_lpips
+    goal: minimize
