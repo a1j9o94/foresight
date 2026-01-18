@@ -45,6 +45,48 @@ uv run modal run infra/modal/app.py::run_experiment \
 - **W&B**: https://wandb.ai/a1j9o94/foresight
 - **Results file**: `/results/<experiment-id>/results.yaml` (on Modal volume)
 
+### 7. Document Your Findings
+
+**After achieving `completed` status, you MUST update these files:**
+
+1. **Sync results locally:**
+   ```bash
+   bash scripts/sync-results.sh
+   ```
+
+2. **Update experiment FINDINGS.md** (`research/experiments/<experiment-id>/FINDINGS.md`):
+   - Plain-language summary of what you discovered
+   - Key metrics and whether thresholds were met
+   - Implications for the hypothesis
+   - Any surprising or unexpected results
+
+3. **Update project FINDINGS.md** (`research/FINDINGS.md`):
+   - Add a summary entry for your experiment
+   - Note the recommendation (proceed/pivot)
+   - Highlight key metrics
+
+Example experiment findings:
+```markdown
+# C1: VLM Latent Sufficiency - Findings
+
+## Status: COMPLETED | Recommendation: PIVOT
+
+## Summary
+VLM latents achieve good perceptual quality (LPIPS=0.264) but fail to preserve
+spatial information (IoU=0.559 < 0.6 threshold).
+
+## Key Metrics
+| Metric | Value | Threshold | Result |
+|--------|-------|-----------|--------|
+| LPIPS | 0.264 | < 0.35 | ✅ Pass |
+| SSIM | 0.943 | > 0.75 | ✅ Pass |
+| Spatial IoU | 0.559 | > 0.6 | ❌ Fail |
+
+## Implications
+The 2x2 token merger destroys positional information. Alternative approaches
+needed for spatial tasks.
+```
+
 ---
 
 ## Handler Implementation
