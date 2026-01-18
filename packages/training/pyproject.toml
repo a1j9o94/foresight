@@ -1,0 +1,19 @@
+[project]
+name = "foresight-training"
+version = "0.1.0"
+description = "Training components for Foresight - GLP trainer, data loaders, losses"
+requires-python = ">=3.10"
+dependencies = [
+    "foresight-core",
+    "foresight-models",
+    "torch>=2.0.0",
+    "wandb>=0.15.0",
+    "datasets>=2.18.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/foresight_training"]

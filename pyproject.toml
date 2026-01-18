@@ -1,0 +1,38 @@
+[project]
+name = "foresight"
+version = "0.1.0"
+description = "Research prototype for AI video prediction and reasoning"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "foresight-core",
+    "foresight-models",
+    "foresight-training",
+    "foresight-inference",
+    "foresight-eval",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+foresight-core = { workspace = true }
+foresight-models = { workspace = true }
+foresight-training = { workspace = true }
+foresight-inference = { workspace = true }
+foresight-eval = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
