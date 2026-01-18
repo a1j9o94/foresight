@@ -17,9 +17,10 @@ Our hypothesis: **pixel grounding provides verification**. By generating actual 
 
 ## Testable Claims
 
-We break the primary hypothesis into **four independent claims**, each testable in isolation.
+We break the primary hypothesis into **four independent claims**, each testable in isolation. See [Experiment Plans](../experiments/README.md) for detailed research protocols.
 
 ### Claim 1: VLM Latents Contain Sufficient Information
+📋 **[Detailed Experiment Plan](../experiments/c1-vlm-latent-sufficiency.md)**
 
 **Statement:** Qwen2-VL's internal representations contain enough information to reconstruct the input video at reasonable fidelity.
 
@@ -45,6 +46,7 @@ Compare: Original vs reconstructed
 ---
 
 ### Claim 2: Small Adapter Can Bridge Latent Spaces
+📋 **[Detailed Experiment Plan](../experiments/c2-adapter-bridging.md)**
 
 **Statement:** A small adapter network (~5-10M params) can translate VLM latent space to video decoder conditioning space.
 
@@ -70,6 +72,7 @@ Compare: Original video vs generated
 ---
 
 ### Claim 3: VLM Can Predict Future States in Latent Space
+📋 **[Detailed Experiment Plan](../experiments/c3-future-prediction.md)**
 
 **Statement:** Given current video + action/question, the VLM (with learned query tokens) produces latents that align with actual future frames.
 
@@ -95,6 +98,7 @@ Compare: Predicted latent vs actual future latent
 ---
 
 ### Claim 4: Pixel Verification Improves Accuracy
+📋 **[Detailed Experiment Plan](../experiments/c4-pixel-verification.md)**
 
 **Statement:** Comparing predicted video to actual outcomes provides a signal that improves prediction accuracy.
 
@@ -122,7 +126,10 @@ Condition B (with verification):
 
 ## Open Questions (What We Don't Know)
 
+See [Experiment Plans](../experiments/README.md) for detailed research protocols.
+
 ### Q1: Latent Space Alignment
+📋 **[Detailed Experiment Plan](../experiments/q1-latent-alignment.md)**
 
 **Question:** VLM latents and video decoder latents were trained on different objectives. How hard is it to align them?
 
@@ -134,6 +141,7 @@ Condition B (with verification):
 3. Try multiple adapter architectures (linear, MLP, cross-attention)
 
 ### Q2: Information Preservation Through VLM
+📋 **[Detailed Experiment Plan](../experiments/q2-information-preservation.md)**
 
 **Question:** Qwen2-VL merges 4 patches into 1 token. Does this lose spatial information needed for video generation?
 
@@ -145,6 +153,7 @@ Condition B (with verification):
 3. Measure spatial reconstruction accuracy (object positions, sizes)
 
 ### Q3: Temporal Coherence
+📋 **[Detailed Experiment Plan](../experiments/q3-temporal-coherence.md)**
 
 **Question:** Can we generate temporally coherent video (not just good individual frames)?
 
@@ -156,6 +165,7 @@ Condition B (with verification):
 3. Compare to baseline video decoder without our conditioning
 
 ### Q4: Training Data Requirements
+📋 **[Detailed Experiment Plan](../experiments/q4-training-data.md)**
 
 **Question:** How much paired (video, action, outcome) data do we need?
 
@@ -167,6 +177,7 @@ Condition B (with verification):
 3. Minimum viable dataset for proof-of-concept
 
 ### Q5: The Right Prediction Target
+📋 **[Detailed Experiment Plan](../experiments/q5-prediction-horizon.md)**
 
 **Question:** Should we predict the next 1 second? 5 seconds? Just the final state?
 
@@ -296,6 +307,7 @@ Ordered to fail fast and isolate issues:
 | v0.1 | Initial | "Video generation helps reasoning" (vague) |
 | v0.2 | Initial | Specific GLP architecture, measurable claims |
 | v0.3 | 2025-01-18 | Added component-level tests, open questions, experiment sequence |
+| v0.4 | 2025-01-18 | Linked detailed experiment plans for all claims and questions |
 
 ## Related Documents
 
