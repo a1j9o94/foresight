@@ -2,6 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Code Style Preferences
+
+- **Use types everywhere** - Full type hints in Python (all function signatures, return types, variables where not obvious). TypeScript strict mode for frontend.
+- **Frontend**: React + TypeScript + Bun (not Gradio/Python)
+- **Backend**: FastAPI with Pydantic models for all request/response types
+- **Avoid `Any` types** - Be specific about types to catch errors early
+
+## Current Project Status
+
+**Gate 1: PASSED** ✅ (2026-01-20)
+- P2 Hybrid Encoder validated: spatial_iou=0.837, lpips=0.162
+- Now in Phase 2: C2 (Adapter Bridging) and Q3 (Temporal Coherence)
+
+See `research/FINDINGS.md` for detailed results and `research/research_plan.yaml` for experiment definitions.
+
+---
+
 ## For Experiment Agents
 
 **If you're assigned to run an experiment, start here:**
@@ -31,39 +48,40 @@ uv run modal run infra/modal/app.py::run_experiment --experiment-id c1-vlm-laten
 
 ## Architecture
 
-The system uses a **Generative Latent Prediction (GLP)** architecture with four modules:
+The system uses a **Generative Latent Prediction (GLP)** architecture:
 
-1. **Vision Encoder** (Qwen2.5-VL vision tower, frozen) - Encodes images/video frames into latent patches
-2. **Reasoning Backbone** (Qwen2.5-VL-7B-Instruct, frozen) - Processes conversation + visual context, predicts next world state via learned query tokens
-3. **Video Decoder** (LTX-Video or HunyuanVideo-1.5, LoRA fine-tuned) - Decodes predicted latents into video frames
-4. **Verification Module** (optional) - Compares predicted video to actual outcomes using LPIPS/VLM comparison
+### Hybrid Encoder (P2 - Validated)
+- **DINOv2-ViT-L** (frozen) - Spatial feature extraction (preserves object positions)
+- **Qwen2.5-VL-7B** (frozen) - Semantic understanding
+- **Cross-attention fusion** - Combines spatial + semantic features
 
-**Trainable components** (~10-50M params total):
-- Learned query tokens (~32-64 tokens, ~1M params)
-- Conditioning adapter (projects VLM latents → video decoder space)
-- Video decoder LoRA weights
+### Video Generation Pipeline
+- **Conditioning Adapter** (~10-50M params, trainable) - Bridges hybrid encoder to video decoder
+- **LTX-Video** (LoRA fine-tuned) - Fast video generation (real-time 30fps)
+
+### Key Insight from P2
+VLM-only approach failed spatial preservation (IoU=0.559). Hybrid encoder with DINOv2 achieves IoU=0.837 by using DINOv2 for spatial features while keeping VLM for semantics.
 
 ## Commands
 
 ```bash
 # Environment setup
-pip install torch torchvision torchaudio
-pip install transformers diffusers accelerate
-pip install flash-attn --no-build-isolation
-pip install gradio wandb bitsandbytes
+uv sync  # Install all Python dependencies
 
-# Download models
-huggingface-cli download Qwen/Qwen2.5-VL-7B-Instruct
-huggingface-cli download Lightricks/LTX-Video
+# Run demo UI (React + FastAPI)
+# Terminal 1: Backend
+cd demo/backend && FORESIGHT_MOCK_MODE=true uvicorn main:app --reload --port 8000
 
-# Run demo UI
-python demo/app.py
+# Terminal 2: Frontend
+cd demo/frontend && bun install && bun run dev
 
-# Training
-python scripts/train.py --config configs/training_config.yaml
+# Open http://localhost:3000
 
-# Evaluation
-python scripts/evaluate.py --checkpoint <path>
+# Run experiments on Modal
+uv run modal run infra/modal/app.py::run_experiment --experiment-id <experiment-id>
+
+# Test with stub mode (no GPU)
+uv run modal run infra/modal/app.py::run_experiment --experiment-id <experiment-id> --stub-mode
 ```
 
 ## Key Design Decisions
