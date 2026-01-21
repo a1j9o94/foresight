@@ -1,0 +1,21 @@
+# Foresight Demo Backend Dependencies
+
+# Web framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Data validation
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Async support
+anyio>=4.0.0
+
+# Optional: ML dependencies (only needed when MOCK_MODE=false)
+# torch>=2.0.0
+# transformers>=4.36.0
+# diffusers>=0.25.0
+# accelerate>=0.25.0

@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  body {
+    @apply bg-surface-50 text-surface-900 antialiased;
+  }
+
+  * {
+    @apply border-surface-200;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium transition-colors;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+
+  .btn-primary {
+    @apply bg-primary-600 text-white hover:bg-primary-700;
+    @apply focus:ring-primary-500;
+  }
+
+  .btn-secondary {
+    @apply bg-surface-200 text-surface-800 hover:bg-surface-300;
+    @apply focus:ring-surface-400;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-surface-600 hover:bg-surface-100;
+    @apply focus:ring-surface-400;
+  }
+
+  .input {
+    @apply w-full px-4 py-2 rounded-lg border border-surface-300;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply placeholder:text-surface-400;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-surface-200;
+  }
+
+  .panel {
+    @apply bg-white h-full flex flex-col;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-surface-100 rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-surface-300 rounded-full hover:bg-surface-400;
+  }
+}
+
+/* Animation keyframes */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* Video player styles */
+.video-container {
+  @apply relative w-full bg-black rounded-lg overflow-hidden;
+  aspect-ratio: 16 / 9;
+}
+
+.video-container video {
+  @apply w-full h-full object-contain;
+}
+
+/* Timeline styles */
+.timeline-container {
+  @apply flex gap-2 overflow-x-auto pb-2 scrollbar-thin;
+}
+
+.timeline-frame {
+  @apply flex-shrink-0 w-16 h-16 rounded-md overflow-hidden border-2 cursor-pointer transition-all;
+  @apply border-transparent hover:border-primary-400;
+}
+
+.timeline-frame.active {
+  @apply border-primary-500 ring-2 ring-primary-200;
+}
+
+/* Message bubble styles */
+.message-bubble {
+  @apply max-w-[80%] px-4 py-3 rounded-2xl;
+}
+
+.message-bubble.user {
+  @apply bg-primary-600 text-white ml-auto rounded-br-md;
+}
+
+.message-bubble.assistant {
+  @apply bg-surface-100 text-surface-900 mr-auto rounded-bl-md;
+}
+
+/* Typing indicator */
+.typing-indicator {
+  @apply flex items-center gap-1 px-4 py-3 bg-surface-100 rounded-2xl rounded-bl-md w-fit;
+}
+
+.typing-indicator span {
+  @apply w-2 h-2 bg-surface-400 rounded-full animate-pulse;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Metrics badge styles */
+.metric-badge {
+  @apply inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium;
+}
+
+.metric-badge.good {
+  @apply bg-green-100 text-green-700;
+}
+
+.metric-badge.warning {
+  @apply bg-yellow-100 text-yellow-700;
+}
+
+.metric-badge.bad {
+  @apply bg-red-100 text-red-700;
+}
+
+.metric-badge.neutral {
+  @apply bg-surface-100 text-surface-600;
+}

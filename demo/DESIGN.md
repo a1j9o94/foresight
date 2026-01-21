@@ -19,28 +19,28 @@ The Foresight demo UI is a chat-based interface that showcases the system's abil
 
 ---
 
-## Architecture Decision: Gradio
+## Architecture Decision: React + FastAPI
 
-**Recommendation: Gradio** (over React or Streamlit)
+**Implementation: React/TypeScript frontend + FastAPI backend**
 
-### Rationale
+### Technology Stack
 
-| Consideration | Gradio | React | Streamlit |
-|--------------|--------|-------|-----------|
-| ML/Video integration | Native | Custom work | Moderate |
-| Development speed | Fast | Slow | Fast |
-| Real-time streaming | Built-in | Custom | Limited |
-| Python backend | Seamless | API needed | Native |
-| HuggingFace ecosystem | Perfect | N/A | Good |
-| Custom components | Good | Excellent | Limited |
-| Production-ready | Yes | Yes | No |
+| Layer | Technology | Rationale |
+|-------|------------|-----------|
+| Frontend | React + TypeScript + Vite | Type safety, excellent component model, flexible styling |
+| Build | Bun | Fast package manager and runtime |
+| Styling | Tailwind CSS | Utility-first, rapid UI development |
+| State | React Query | Robust async state management |
+| Streaming | WebSocket | Real-time text and video streaming |
+| Backend | FastAPI | Modern Python, async support, Pydantic integration |
+| Validation | Pydantic | Strong typing for API contracts |
 
 **Key factors:**
-1. Project already lists `gradio` in CLAUDE.md commands
-2. Native support for video/image components
-3. Streaming responses via generators
-4. Easy integration with PyTorch/HuggingFace models
-5. Built-in handling of file uploads, chat interfaces
+1. Full control over UI/UX with React components
+2. Real-time streaming via native WebSocket
+3. Type safety across frontend (TypeScript) and backend (Pydantic)
+4. Easy integration with PyTorch/HuggingFace models via FastAPI
+5. Mock mode for development without GPU requirements
 
 ---
 
@@ -199,12 +199,12 @@ The Foresight demo UI is a chat-based interface that showcases the system's abil
 
 ```
 +------------------+     +-------------------+     +------------------+
-|   Gradio UI      |     |  Backend Server   |     |  Model Pipeline  |
+|   React Frontend |     |  FastAPI Backend  |     |  Model Pipeline  |
 |                  |     |                   |     |                  |
-| - Chat Interface |<--->| - WebSocket       |<--->| - Qwen2.5-VL     |
-| - Video Display  |     | - Session Mgmt    |     | - DINOv2 (P2)    |
-| - Timeline       |     | - Request Queue   |     | - Adapter        |
-| - Metrics        |     | - Caching         |     | - LTX-Video      |
+| - ChatPanel      |<--->| - REST API        |<--->| - Qwen2.5-VL     |
+| - ThoughtsPanel  |     | - WebSocket       |     | - DINOv2 (P2)    |
+| - VideoPlayer    |     | - Session Mgmt    |     | - Adapter        |
+| - Timeline       |     | - Inference Svc   |     | - LTX-Video      |
 +------------------+     +-------------------+     +------------------+
                                  |
                          +-------v-------+
@@ -217,27 +217,33 @@ The Foresight demo UI is a chat-based interface that showcases the system's abil
 
 ### Backend API Endpoints
 
-```python
-# Gradio interface functions (not REST endpoints)
+**REST Endpoints:**
 
-def chat_predict(message: str, history: list, image: Optional[Image]) -> Generator:
-    """
-    Main chat function with streaming.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/status` | System status (model loaded, VRAM usage) |
+| GET | `/api/health` | Health check |
+| GET | `/api/config` | Current configuration |
+| POST | `/api/chat` | Non-streaming chat (fallback) |
+| POST | `/api/upload` | Image upload |
 
-    Yields:
-    - text_chunk: Streaming text response
-    - video_frames: Predicted video (when ready)
-    - metrics: Timing and quality metrics
-    """
-    pass
+**WebSocket Protocol (`/ws/chat`):**
 
-def get_prediction_timeline(session_id: str) -> list[PredictionFrame]:
-    """Get all predictions from current session."""
-    pass
+```typescript
+// Client sends:
+interface ChatMessage {
+  message: string;
+  messageId: string;
+  imageBase64?: string;
+}
 
-def compare_prediction(predicted: Video, actual: Video) -> ComparisonResult:
-    """Compare prediction against actual outcome."""
-    pass
+// Server sends (streaming):
+type ServerMessage =
+  | { type: "text_chunk"; data: { messageId: string; chunk: string; done: boolean } }
+  | { type: "prediction_start"; data: { predictionId: string } }
+  | { type: "prediction_progress"; data: { predictionId: string; progress: number } }
+  | { type: "prediction_complete"; data: PredictionCompleteData }
+  | { type: "error"; data: { message: string; code?: string } };
 ```
 
 ### Integration with Foresight Pipeline
@@ -512,81 +518,110 @@ Exposed in UI settings panel:
 
 ```
 demo/
-├── DESIGN.md           # This file
-├── app.py              # Main Gradio application
-├── config.yaml         # Demo configuration
-├── components/
-│   ├── __init__.py
-│   ├── chat.py         # Chat interface component
-│   ├── thoughts.py     # Thoughts panel component
-│   ├── timeline.py     # Prediction timeline
-│   └── comparison.py   # Before/after comparison
-├── pipeline/
-│   ├── __init__.py
-│   └── demo_pipeline.py  # Wraps foresight_inference
-├── static/
-│   ├── css/
-│   │   └── custom.css
-│   └── assets/
-│       ├── logo.png
-│       └── placeholder.mp4
-└── tests/
-    ├── test_components.py
-    └── test_pipeline.py
+├── DESIGN.md               # This file
+├── README.md               # Quick start guide
+├── config.yaml             # Demo configuration
+├── frontend/               # React + TypeScript frontend
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   ├── tailwind.config.js
+│   ├── index.html
+│   └── src/
+│       ├── App.tsx         # Main application component
+│       ├── main.tsx        # Entry point
+│       ├── components/
+│       │   ├── ChatPanel.tsx
+│       │   ├── ThoughtsPanel.tsx
+│       │   ├── MessageBubble.tsx
+│       │   ├── VideoPlayer.tsx
+│       │   ├── MetricsDisplay.tsx
+│       │   └── Timeline.tsx
+│       ├── hooks/
+│       │   ├── useChat.ts
+│       │   └── useWebSocket.ts
+│       ├── types/
+│       │   └── index.ts
+│       └── styles/
+│           └── globals.css
+├── backend/                # FastAPI backend
+│   ├── main.py             # Application entry point
+│   ├── config.py           # Settings with Pydantic
+│   ├── requirements.txt
+│   ├── api/
+│   │   ├── routes.py       # REST endpoints
+│   │   └── websocket.py    # WebSocket handler
+│   ├── models/
+│   │   └── schemas.py      # Pydantic models
+│   └── services/
+│       └── inference.py    # Mock + real inference
+└── static/
+    └── assets/
 ```
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Basic Scaffold (This PR)
-- Project structure
-- Basic Gradio app with placeholder UI
-- Configuration loading
-- Mock pipeline responses
+### Phase 1: Basic Scaffold (Complete)
+- React + TypeScript frontend with Vite/Bun
+- FastAPI backend with WebSocket support
+- Mock inference service
+- Two-panel layout (chat + thoughts)
 
-### Phase 2: Chat Integration
-- Connect to VLM for text generation
-- Streaming text responses
-- Image upload and display
+### Phase 2: Real Inference Integration
+- Connect to Qwen2.5-VL for text generation
+- Integrate DINOv2 hybrid encoder (P2)
+- Connect to LTX-Video decoder
 
-### Phase 3: Prediction Display
-- Integrate video decoder
-- Thoughts panel with video display
-- Basic metrics display
+### Phase 3: Enhanced Features
+- Timeline navigation and playback
+- Before/after comparison view
+- Latent visualization (advanced mode)
+- Settings panel with quality controls
 
-### Phase 4: Advanced Features
-- Timeline navigation
-- Before/after comparison
-- Latent visualization
-- Settings panel
-
-### Phase 5: Polish
-- Error handling
-- Mobile responsive
+### Phase 4: Polish
+- Mobile responsive layout
+- Error handling improvements
 - Performance optimization
-- Documentation
+- VRAM monitoring
 
 ---
 
 ## Dependencies
 
-```python
-# demo/requirements.txt (or add to package)
+### Frontend (package.json)
 
-gradio>=4.0.0
-torch>=2.0.0
-transformers>=4.36.0
-diffusers>=0.25.0
-accelerate>=0.25.0
-pillow>=10.0.0
-numpy>=1.24.0
-opencv-python>=4.8.0
+```json
+{
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@tanstack/react-query": "^5.17.0",
+    "lucide-react": "^0.303.0",
+    "clsx": "^2.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12",
+    "tailwindcss": "^3.4.1"
+  }
+}
+```
 
-# Internal packages
-foresight-inference
-foresight-models
-foresight-eval
+### Backend (requirements.txt)
+
+```
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+Pillow>=10.0.0
+
+# Optional: ML dependencies (when MOCK_MODE=false)
+# torch>=2.0.0
+# transformers>=4.36.0
+# diffusers>=0.25.0
 ```
 
 ---
