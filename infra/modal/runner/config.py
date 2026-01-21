@@ -177,13 +177,22 @@ def _parse_dependencies(content: str) -> list[str]:
 # Load experiment registry from research_plan.yaml (single source of truth)
 def _load_experiment_registry() -> dict:
     """Load experiment configurations from research_plan.yaml."""
-    # Find the research_plan.yaml relative to this file
-    # This file is at: infra/modal/runner/config.py
-    # YAML is at: research/research_plan.yaml
-    config_path = Path(__file__).parent.parent.parent.parent / "research" / "research_plan.yaml"
+    # Find the research_plan.yaml - check multiple locations:
+    # 1. Modal environment: /research/research_plan.yaml
+    # 2. Local development: relative to this file
+    possible_paths = [
+        Path("/research/research_plan.yaml"),  # Modal mount
+        Path(__file__).parent.parent.parent.parent / "research" / "research_plan.yaml",  # Local
+    ]
 
-    if not config_path.exists():
-        print(f"Warning: research_plan.yaml not found at {config_path}")
+    config_path = None
+    for path in possible_paths:
+        if path.exists():
+            config_path = path
+            break
+
+    if config_path is None:
+        print(f"Warning: research_plan.yaml not found at {possible_paths}")
         return {}
 
     with open(config_path) as f:

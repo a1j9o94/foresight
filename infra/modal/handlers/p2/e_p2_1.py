@@ -20,6 +20,7 @@ import os
 import sys
 
 sys.path.insert(0, "/root")
+sys.path.insert(0, "/root/handlers/p2")
 
 import numpy as np
 import torch
@@ -29,12 +30,13 @@ from PIL import Image, ImageDraw
 from collections import defaultdict
 
 from runner import ExperimentRunner
+from detr_head import DETRDetectionHead, HungarianMatcher, detr_loss, box_cxcywh_to_xyxy
 
 
 class SpatialProbe(nn.Module):
     """Predict bounding boxes from DINOv2 features using cross-attention."""
 
-    def __init__(self, feature_dim: int = 1536, hidden_dim: int = 512):
+    def __init__(self, feature_dim: int = 1024, hidden_dim: int = 512):
         super().__init__()
         # Attention pooling
         self.attn_pool = nn.MultiheadAttention(feature_dim, num_heads=8, batch_first=True)
@@ -65,9 +67,9 @@ class SpatialProbe(nn.Module):
 
 
 class DetectionProbe(nn.Module):
-    """DETR-style detection probe for mAP evaluation."""
+    """Simple detection probe for mAP evaluation (legacy - use DETRDetectionHead for better results)."""
 
-    def __init__(self, input_dim: int = 1536, num_queries: int = 20, n_classes: int = 12, hidden_dim: int = 256):
+    def __init__(self, input_dim: int = 1024, num_queries: int = 20, n_classes: int = 12, hidden_dim: int = 256):
         super().__init__()
         self.num_queries = num_queries
         self.n_classes = n_classes
@@ -100,12 +102,12 @@ class DetectionProbe(nn.Module):
 
 
 def load_dinov2_model(device: torch.device):
-    """Load DINOv2-giant model."""
-    print("  Loading DINOv2-giant model...")
-    model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14')
+    """Load DINOv2-large model (ViT-L for latency optimization)."""
+    print("  Loading DINOv2-large model...")
+    model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
     model = model.to(device)
     model.eval()
-    print(f"  DINOv2-giant loaded: {sum(p.numel() for p in model.parameters()) / 1e9:.2f}B params")
+    print(f"  DINOv2-large loaded: {sum(p.numel() for p in model.parameters()) / 1e6:.1f}M params")
     return model
 
 
@@ -349,7 +351,7 @@ def compute_map(
         pred_classes = pred_probs[:, :-1].argmax(dim=-1)
         pred_scores = pred_probs[:, :-1].max(dim=-1)[0]
 
-        keep = pred_scores > 0.3
+        keep = pred_scores > 0.05
         pred_boxes = pred_boxes[keep]
         pred_classes = pred_classes[keep]
         pred_scores = pred_scores[keep]
@@ -451,10 +453,10 @@ def create_visualization(
 
         # Prediction
         axes[1, i].imshow(images[i])
-        pred = pred_boxes[i]
+        pred = np.array(pred_boxes[i]).flatten()  # Ensure 1D array
         pred_rect = patches.Rectangle(
-            ((pred[0] - pred[2] / 2) * img_size, (pred[1] - pred[3] / 2) * img_size),
-            pred[2] * img_size, pred[3] * img_size,
+            ((float(pred[0]) - float(pred[2]) / 2) * img_size, (float(pred[1]) - float(pred[3]) / 2) * img_size),
+            float(pred[2]) * img_size, float(pred[3]) * img_size,
             linewidth=2, edgecolor="red", facecolor="none",
         )
         axes[1, i].add_patch(pred_rect)
@@ -511,7 +513,7 @@ def e_p2_1_dinov2_spatial_analysis(runner: ExperimentRunner) -> dict:
     train_images, train_boxes = generate_position_dataset(n_images=200)
     test_images, test_boxes = generate_position_dataset(n_images=50)
 
-    detection_samples, n_classes = generate_detection_dataset(n_samples=200)
+    detection_samples, n_classes = generate_detection_dataset(n_samples=2000)
 
     print(f"  Position dataset: {len(train_images)} train, {len(test_images)} test")
     print(f"  Detection dataset: {len(detection_samples)} samples, {n_classes} classes")
@@ -595,7 +597,7 @@ def e_p2_1_dinov2_spatial_analysis(runner: ExperimentRunner) -> dict:
     with torch.no_grad():
         pred_boxes = spatial_probe(test_features_t)
 
-    spatial_metrics = compute_iou_metrics(pred_boxes.cpu().numpy(), test_boxes)
+    spatial_metrics = compute_iou_metrics(pred_boxes.detach().cpu().numpy(), test_boxes)
 
     print(f"  Spatial IoU: {spatial_metrics['mean_iou']:.4f}")
     print(f"  IoU > 0.5: {spatial_metrics['iou_above_0.5']:.1%}")
@@ -610,29 +612,44 @@ def e_p2_1_dinov2_spatial_analysis(runner: ExperimentRunner) -> dict:
     })
 
     # =========================================================================
-    # Stage 4: Train and evaluate detection probe
+    # Stage 4: Train and evaluate detection probe (Full DETR)
     # =========================================================================
-    print("\n[Stage 4/5] Training detection probe...")
+    print("\n[Stage 4/5] Training DETR detection head...")
 
     detection_features_t = detection_features.to(device)
 
-    det_probe = DetectionProbe(
+    # Use full DETR head for proper mAP
+    det_probe = DETRDetectionHead(
         input_dim=detection_features.shape[-1],
+        hidden_dim=256,
         num_queries=20,
         n_classes=n_classes,
+        num_encoder_layers=6,
+        num_decoder_layers=6,
+        num_heads=8,
     ).to(device)
-    det_optimizer = torch.optim.AdamW(det_probe.parameters(), lr=1e-4, weight_decay=0.01)
+
+    matcher = HungarianMatcher(cost_class=2.0, cost_bbox=10.0, cost_giou=5.0)
+    det_optimizer = torch.optim.AdamW(det_probe.parameters(), lr=1e-4, weight_decay=1e-4)
+
+    # Learning rate warmup (longer warmup for more epochs)
+    def lr_lambda(epoch):
+        if epoch < 100:
+            return epoch / 100
+        # Cosine decay after warmup
+        return 0.5 * (1 + np.cos(np.pi * (epoch - 100) / (2000 - 100)))
+    scheduler = torch.optim.lr_scheduler.LambdaLR(det_optimizer, lr_lambda)
 
     n_train = int(len(detection_features) * 0.8)
     train_det_features = detection_features_t[:n_train]
     val_det_features = detection_features_t[n_train:]
 
-    from torchvision.ops import box_iou as torch_box_iou
+    n_epochs = 2000  # Extended training for DETR convergence with more data
+    batch_size = 16
 
-    for epoch in range(100):
+    for epoch in range(n_epochs):
         det_probe.train()
         epoch_losses = []
-        batch_size = 16
 
         for start in range(0, n_train, batch_size):
             end = min(start + batch_size, n_train)
@@ -640,35 +657,42 @@ def e_p2_1_dinov2_spatial_analysis(runner: ExperimentRunner) -> dict:
 
             pred_boxes, pred_logits = det_probe(batch_features)
 
-            total_loss = 0
+            # Prepare ground truth in list format for DETR loss
+            gt_boxes_list = []
+            gt_labels_list = []
             for i in range(len(batch_features)):
                 sample = detection_samples[start + i]
-                gt_boxes = torch.tensor(sample["boxes"]).to(device)
-                gt_labels = torch.tensor(sample["labels"]).to(device)
+                # Convert boxes from xyxy to cxcywh format
+                boxes_xyxy = torch.tensor(sample["boxes"]).to(device)
+                if len(boxes_xyxy) > 0:
+                    # xyxy -> cxcywh
+                    cx = (boxes_xyxy[:, 0] + boxes_xyxy[:, 2]) / 2
+                    cy = (boxes_xyxy[:, 1] + boxes_xyxy[:, 3]) / 2
+                    w = boxes_xyxy[:, 2] - boxes_xyxy[:, 0]
+                    h = boxes_xyxy[:, 3] - boxes_xyxy[:, 1]
+                    boxes_cxcywh = torch.stack([cx, cy, w, h], dim=-1)
+                    gt_boxes_list.append(boxes_cxcywh)
+                else:
+                    gt_boxes_list.append(torch.zeros(0, 4, device=device))
+                gt_labels_list.append(torch.tensor(sample["labels"]).to(device))
 
-                if len(gt_boxes) == 0:
-                    continue
+            loss, loss_dict = detr_loss(
+                pred_boxes, pred_logits,
+                gt_boxes_list, gt_labels_list,
+                matcher, n_classes
+            )
 
-                ious = torch_box_iou(pred_boxes[i], gt_boxes)
-                best_pred_idx = ious.argmax(dim=0)
+            det_optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(det_probe.parameters(), 0.1)
+            det_optimizer.step()
+            epoch_losses.append(loss.item())
 
-                matched_pred_boxes = pred_boxes[i][best_pred_idx]
-                box_loss = F.l1_loss(matched_pred_boxes, gt_boxes)
+        scheduler.step()
 
-                matched_pred_logits = pred_logits[i][best_pred_idx]
-                class_loss = F.cross_entropy(matched_pred_logits, gt_labels)
-
-                total_loss += box_loss + class_loss
-
-            if total_loss > 0:
-                det_optimizer.zero_grad()
-                total_loss.backward()
-                det_optimizer.step()
-                epoch_losses.append(total_loss.item())
-
-        if (epoch + 1) % 20 == 0:
+        if (epoch + 1) % 200 == 0:
             avg_loss = np.mean(epoch_losses) if epoch_losses else 0
-            print(f"    Epoch {epoch+1}/100, Loss: {avg_loss:.4f}")
+            print(f"    Epoch {epoch+1}/{n_epochs}, Loss: {avg_loss:.4f}")
 
     # Evaluate mAP
     det_probe.eval()
@@ -683,7 +707,9 @@ def e_p2_1_dinov2_spatial_analysis(runner: ExperimentRunner) -> dict:
             feat = detection_features_t[i:i+1]
             pred_b, pred_l = det_probe(feat)
 
-            all_pred_boxes.append(pred_b[0])
+            # Convert DETR cxcywh output to xyxy for mAP computation
+            pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_b[0])
+            all_pred_boxes.append(pred_boxes_xyxy)
             all_pred_logits.append(pred_l[0])
             all_gt_boxes.append(torch.tensor(sample["boxes"]).to(device))
             all_gt_labels.append(torch.tensor(sample["labels"]).to(device))
@@ -709,7 +735,7 @@ def e_p2_1_dinov2_spatial_analysis(runner: ExperimentRunner) -> dict:
     viz_bytes = create_visualization(
         test_images[:8],
         test_boxes[:8],
-        pred_boxes.cpu().numpy()[:8],
+        pred_boxes.detach().cpu().numpy()[:8],
         spatial_metrics,
     )
     viz_path = runner.results.save_artifact("dinov2_spatial_probe.png", viz_bytes)

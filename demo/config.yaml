@@ -1,0 +1,74 @@
+# Foresight Demo Configuration
+# See demo/DESIGN.md for full documentation
+
+model:
+  # Vision-Language Model
+  vlm: "Qwen/Qwen2.5-VL-7B-Instruct"
+  vlm_dtype: "float16"
+
+  # Video Decoder
+  video_decoder: "Lightricks/LTX-Video"
+  decoder_dtype: "float16"
+
+  # P2 Hybrid Encoder (DINOv2 for spatial features)
+  hybrid_encoder: true
+  dino_model: "facebook/dinov2-vitl14"
+  dino_dtype: "float16"
+
+  # Adapter checkpoint (when available)
+  adapter_path: null  # Path to trained adapter weights
+
+generation:
+  # Video generation settings
+  num_frames: 30
+  fps: 15
+  resolution: [512, 512]
+  guidance_scale: 7.5
+  num_inference_steps: 25
+
+  # Query tokens (GLP architecture)
+  num_query_tokens: 32
+
+ui:
+  # Appearance
+  theme: "soft"  # soft, dark, light
+  title: "Foresight Demo"
+  description: "AI that sees predicted futures"
+
+  # Feature toggles
+  show_metrics: true
+  show_latents: false  # Enable for advanced/debug mode
+  auto_play_predictions: true
+
+  # Panel sizes (percentage)
+  chat_panel_width: 60
+  thoughts_panel_width: 40
+
+performance:
+  # Inference optimization
+  batch_size: 1
+  use_fp16: true
+  use_flash_attention: true
+  cache_encodings: true
+
+  # Memory management
+  offload_to_cpu: false
+  sequential_offload: false
+
+  # History limits
+  max_history_messages: 50
+  max_prediction_cache: 10
+
+server:
+  # Gradio server settings
+  host: "0.0.0.0"
+  port: 7860
+  share: false
+  auth: null  # Set to [username, password] for basic auth
+  debug: false
+
+# Development/testing
+dev:
+  mock_pipeline: false  # Use mock responses for UI development
+  mock_latency_ms: 2000  # Simulated inference time
+  sample_video_path: "demo/static/assets/placeholder.mp4"

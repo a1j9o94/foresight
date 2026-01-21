@@ -1,690 +1,838 @@
-# Claim 2: Small Adapter Can Bridge Latent Spaces
+# Experiment Plan: C2 - Adapter Bridging
 
-**Experiment ID:** C2
-**Status:** Planned
-**Priority:** High (Critical Path)
-**Depends On:** C1 (partial - needs latent extraction validated)
-**Last Updated:** 2025-01-18
+**Claim:** A small adapter (~10-50M parameters) can effectively bridge the hybrid encoder (DINOv2 + VLM) to the LTX-Video decoder, achieving >90% of the reconstruction quality of a much larger adapter.
+
+**Status:** Planning
+**Priority:** Critical (Phase 2 - required for Gate 2)
+**Owner:** TBD
+**Created:** 2026-01-20 (Updated from 2025-01-18 draft)
+
+**Dependencies:** P2-Hybrid-Encoder (PASSED - spatial_iou=0.837, lpips=0.162)
 
 ---
 
 ## 1. Objective
 
-**Primary Goal:** Determine whether a small adapter network (~5-10M parameters) can effectively translate Qwen2.5-VL's 1536-dimensional visual latents to LTX-Video's 128-channel latent conditioning space, achieving reconstruction quality sufficient for downstream prediction tasks.
+Design and validate an efficient adapter architecture that:
+- Bridges the hybrid encoder output (DINOv2 spatial + VLM semantic features) to LTX-Video conditioning
+- Achieves high parameter efficiency: 10M params should achieve >90% of 100M params quality
+- Maintains or improves upon P2 reconstruction quality (LPIPS < 0.35, Spatial IoU > 0.60)
+- Keeps inference latency overhead minimal (<25% over baseline)
 
-**Specific Questions:**
-1. Is the mapping between VLM and video decoder latent spaces learnable with limited capacity?
-2. What is the minimum adapter complexity required for acceptable reconstruction?
-3. Does adapter performance scale predictably with parameter count, or is there a capacity cliff?
-4. Which architectural pattern (linear, MLP, cross-attention) best suits this bridging task?
+**Core Question:** What is the minimal adapter architecture that can effectively translate hybrid encoder features into video decoder conditioning?
 
-**Success Definition:** A 10M parameter adapter achieves >80% of the reconstruction quality (measured by LPIPS) of a 100M parameter adapter, demonstrating that a compact transform can bridge these spaces without memorization.
-
----
-
-## 2. Background
-
-### 2.1 Qwen2.5-VL Latent Space
-
-| Property | Value | Notes |
-|----------|-------|-------|
-| Embedding dimension | 1536 | Per visual token after ViT |
-| Patch size | 14x14 pixels | Before 2x2 merge |
-| Token merge ratio | 4:1 | 2x2 spatial patches -> 1 token |
-| Position encoding | M-RoPE | Decomposed temporal/height/width |
-| Tokens per frame (448x672) | ~768 | After merge, varies by resolution |
-
-**Key Characteristics:**
-- Trained for language-visual alignment (next token prediction)
-- Semantic compression prioritized over spatial fidelity
-- Window attention in later layers (Qwen2.5-VL) may limit global context
-- Rich semantic content but potentially lossy spatial information
-
-### 2.2 LTX-Video Latent Space
-
-| Property | Value | Notes |
-|----------|-------|-------|
-| Latent channels | 128 | Unusually high vs. typical 16 |
-| Spatial compression | 32x | Per dimension |
-| Temporal compression | 8x | Per dimension |
-| Total compression | 1:192 | 8192 pixels per token |
-| Expected input noise | t=0.05 | Denoising decoder expects near-clean latents |
-
-**Key Characteristics:**
-- Trained for reconstruction (VAE objective + GAN)
-- High channel count compensates for aggressive spatial compression
-- Tightly coupled with denoising decoder for high-frequency recovery
-- Strong spatial fidelity, learned through reconstruction objective
-
-### 2.3 The Bridging Challenge
-
-The core difficulty: these latent spaces were trained with fundamentally different objectives.
-
-| Aspect | Qwen2.5-VL | LTX-Video |
-|--------|------------|-----------|
-| Training objective | Language modeling | Visual reconstruction |
-| Optimization pressure | Semantic fidelity | Pixel fidelity |
-| Spatial structure | Token sequence | 3D spatial grid |
-| Information bottleneck | Language alignment | Compression ratio |
-
-**Hypothesis:** Despite different objectives, both spaces encode similar visual semantics (objects, positions, relationships). A learned transform should find correspondences without requiring the adapter to "memorize" mappings.
-
-**Counter-hypothesis (failure mode):** The representations are organized so differently that bridging requires the adapter to essentially learn a decoder-encoder pair, requiring >100M parameters.
-
-### 2.4 Prior Work on Latent Alignment
-
-- **CLIP-to-Diffusion adapters** (IP-Adapter): Successfully bridge CLIP image embeddings to Stable Diffusion. Uses ~30M parameter cross-attention adapter.
-- **LLaVA visual projector**: Simple 2-layer MLP (4M params) projects CLIP ViT to LLM space.
-- **IC-LoRA (LTX)**: Demonstrates conditioning LTX with external signals via LoRA adapters.
-
-These suggest 5-50M parameter adapters are viable for similar bridging tasks.
+**Why This Matters:**
+- P2 validated that DINOv2 + VLM fusion achieves excellent reconstruction (LPIPS=0.162, Spatial IoU=0.837)
+- However, P2's fusion module was 78M params - can we achieve similar quality with 10-20M params?
+- Efficient adapters are critical for practical deployment and eventual real-time inference
+- Phase 3 (future prediction) will train on top of this adapter architecture
 
 ---
 
-## 3. Experimental Setup
+## 2. Hypothesis
 
-### 3.1 Hardware Requirements
+**Primary Hypothesis:**
+A 10M parameter adapter using cross-attention with learned query tokens can achieve >90% of the reconstruction quality (measured by LPIPS) of a 100M parameter adapter, when bridging the hybrid encoder to LTX-Video.
 
-| Component | VRAM | Notes |
-|-----------|------|-------|
-| Qwen2.5-VL-7B (frozen, bf16) | ~15GB | Encoder only, no generation |
-| LTX-Video VAE (frozen, bf16) | ~2GB | Encoder + decoder |
-| LTX-Video Transformer (frozen, bf16) | ~4GB | For diffusion steps |
-| Adapter (training) | ~1-2GB | Varies by architecture |
-| Batch data + activations | ~8-12GB | Gradient checkpointing reduces this |
-| **Total (single GPU)** | **~30-35GB** | A100-40GB or RTX 4090 |
+**Quantitative Predictions:**
 
-**Recommended Setup:**
-- **Development:** Single RTX 4090 (24GB) with gradient checkpointing and reduced batch size
-- **Full training:** Single A100-40GB or A100-80GB for larger batch sizes
-- **Scaling experiments:** 2-4x A100-40GB for 50M+ parameter adapters
+| Adapter Size | Expected LPIPS | Expected Spatial IoU | Params |
+|--------------|----------------|---------------------|--------|
+| 100M (reference) | 0.16 | 0.84 | 100M |
+| 50M | 0.17 | 0.82 | 50M |
+| 20M | 0.18 | 0.80 | 20M |
+| 10M | 0.19 | 0.78 | 10M |
 
-### 3.2 Software Dependencies
+**Null Hypothesis:**
+Adapter capacity has a strong linear relationship with reconstruction quality, and 10M params cannot achieve >80% of 100M performance.
+
+**Falsifiability:**
+- If 10M adapter LPIPS > 0.20 (i.e., >25% worse than 100M): Small adapters are insufficient
+- If 10M adapter requires >2x training time: Efficiency benefits are negated
+- If 10M adapter spatial IoU < 0.70: Spatial information is lost in compression
+
+---
+
+## 3. Background
+
+### 3.1 What P2 Established
+
+From P2 results (`research/experiments/p2-hybrid-encoder/results.yaml`):
+
+| Component | Achievement | Notes |
+|-----------|-------------|-------|
+| Spatial IoU | 0.837 | DINOv2-ViT-L preserves spatial info |
+| LPIPS | 0.162 | Hybrid fusion achieves excellent perceptual quality |
+| Fusion module | 78M params | Cross-attention fusion (4 layers) |
+| Latency overhead | 31.9% | With ViT-L (down from 68% with ViT-G) |
+
+**Key insight:** The hybrid encoder works. Now we need to optimize the adapter connecting it to the video decoder.
+
+### 3.2 Adapter Design Space
+
+The adapter must transform hybrid encoder output to LTX-Video conditioning:
+
+```
+Input: Hybrid Features
+  - DINOv2-ViT-L: [B, 256, 1024] (16x16 patches, 1024 dim)
+  - VLM (Qwen2.5-VL): [B, T_vlm, 3584] (variable length, 3584 dim)
+
+Output: LTX-Video Conditioning
+  - [B, 77, 4096] (fixed 77 tokens, 4096 dim)
+```
+
+**Design choices to explore:**
+1. **Query-based adapter:** Learned queries attend to hybrid features (DETR-style)
+2. **Bottleneck adapter:** Compress features through bottleneck, then expand
+3. **LoRA-style adapter:** Low-rank projections from each stream
+4. **Mixture of experts:** Sparse routing to specialized sub-adapters
+
+### 3.3 Related Work
+
+- **Adapter layers (Houlsby et al.):** Add small bottleneck layers between transformer blocks
+- **LoRA (Hu et al.):** Low-rank decomposition for efficient fine-tuning
+- **Q-Former (BLIP-2):** Learned queries bridge vision encoder to LLM
+- **Perceiver (Jaegle et al.):** Fixed number of latent queries process variable-length inputs
+
+### 3.4 Lessons from P2
+
+From P2 ablation study (E-P2.5):
+- Cross-attention outperformed FiLM and concatenation for fusion
+- 2 layers achieved best balance of quality vs training stability
+- VLM weight 0.3 (vs DINOv2 0.7) showed best results
+- Deeper models (4-6 layers) showed overfitting on limited data
+
+---
+
+## 4. Experimental Setup
+
+### 4.1 Hardware Requirements
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| GPU | 1x A100 40GB | 1x A100 80GB |
+| CPU RAM | 64GB | 128GB |
+| Storage | 200GB SSD | 400GB NVMe |
+
+**VRAM breakdown (inference):**
+- Qwen2.5-VL-7B (bf16): ~15GB
+- DINOv2-ViT-L (bf16): ~2GB
+- Adapter (variable): 0.1-0.4GB
+- LTX-Video (bf16): ~8GB
+- **Total: ~26GB minimum**
+
+### 4.2 Software Dependencies
 
 ```bash
-# Core dependencies
+# Existing from P2
 pip install torch>=2.1.0 torchvision torchaudio
-pip install transformers>=4.37.0 diffusers>=0.25.0 accelerate>=0.25.0
-pip install flash-attn --no-build-isolation  # Required for Qwen2.5-VL efficiency
+pip install transformers>=4.40.0 accelerate>=0.27.0
+pip install diffusers>=0.27.0
+pip install flash-attn --no-build-isolation
+pip install timm>=0.9.0  # DINOv2
 
 # Evaluation
-pip install lpips pytorch-fid  # Perceptual metrics
-pip install scikit-learn umap-learn  # Latent space visualization
+pip install lpips pytorch-fid scikit-learn
 
-# Training infrastructure
-pip install wandb  # Experiment tracking
-pip install bitsandbytes  # Optional: 8-bit optimizers for memory savings
-
-# Video processing
-pip install decord opencv-python  # Video loading
-pip install qwen-vl-utils[decord]==0.0.8  # Qwen video utils
+# Utilities
+pip install wandb einops matplotlib seaborn
 ```
 
-### 3.3 Training Data Requirements
+### 4.3 Models (Pre-cached on Modal)
 
-**Primary Dataset:** Something-Something v2 (subset)
-- 220,847 videos of hand-object interactions
-- Clear object visibility, simple backgrounds
-- Good for measuring spatial reconstruction accuracy
+From P2 infrastructure:
+- `Qwen/Qwen2.5-VL-7B-Instruct`
+- `dinov2_vitl14` (via torch.hub)
+- `Lightricks/LTX-Video`
 
-**Minimum Viable Dataset:**
-- **E2.1-E2.3:** 10,000 video clips (quick iteration)
-- **E2.4 (scaling study):** 50,000 video clips (robust conclusions)
+### 4.4 Datasets
 
-**Data Pipeline:**
-```
-Video -> Sample 8 frames (1 fps) -> Qwen2.5-VL encode -> Extract latents
-                                 -> LTX-VAE encode -> Target latents
+**Training:**
 
-Training pairs: (VLM_latents, LTX_latents) for each video
-```
+| Dataset | N samples | Purpose |
+|---------|-----------|---------|
+| Synthetic shapes | 10,000 | Controlled spatial testing |
+| COCO val2017 subset | 5,000 | Real-world objects |
+| Something-Something v2 | 5,000 | Action/motion |
 
-**Storage:** ~50GB for preprocessed latent pairs (50K videos)
+**Validation:**
 
-### 3.4 Common Training Configuration
-
-```yaml
-# Base configuration for all experiments
-training:
-  optimizer: AdamW
-  weight_decay: 0.01
-  warmup_steps: 1000
-  max_steps: 50000
-  gradient_checkpointing: true
-  mixed_precision: bf16
-
-data:
-  batch_size: 8  # Per GPU, adjust based on VRAM
-  num_workers: 4
-  frames_per_clip: 8
-  resolution: [512, 768]  # H x W
-
-evaluation:
-  eval_every: 1000
-  metrics: [lpips, mse, cosine_sim]
-  num_eval_samples: 500
-```
+| Dataset | N samples | Purpose |
+|---------|-----------|---------|
+| Synthetic shapes | 1,000 | Spatial IoU testing |
+| COCO val2017 (held-out) | 500 | Real-world evaluation |
 
 ---
 
-## 4. Experiments
+## 5. Experiments
 
-### E2.1: Linear Probe (Baseline)
+### E2.1: Baseline Adapter Scaling Study
 
-**Objective:** Establish baseline - can a linear transform bridge the spaces at all?
+**Objective:** Establish the scaling relationship between adapter size and reconstruction quality.
 
-**Architecture:**
-```
-VLM Latents [B, T, 1536] -> Linear(1536, 128*H*W) -> Reshape -> LTX Latents [B, 128, T/8, H/32, W/32]
-```
+**Protocol:**
+1. Train adapters at 5M, 10M, 20M, 50M, 100M parameter scales
+2. Use identical training procedure (loss, optimizer, data)
+3. Evaluate reconstruction quality at each scale
+4. Compute efficiency curve (quality vs params)
 
-**Parameters:** ~200K (just the linear layer weight matrix)
+**Implementation:**
 
-**Training Details:**
-- Loss: MSE(adapter_output, target_LTX_latents)
-- Learning rate: 1e-4
-- Steps: 10,000
-- Expected time: 2-4 hours on single GPU
-
-**Evaluation:**
-1. Latent space MSE (direct measure of alignment)
-2. Decoded video LPIPS (perceptual quality after LTX decoding)
-3. t-SNE/UMAP visualization of projected vs. target latents
-
-**Success Criteria:**
-- LPIPS < 0.5: Linear mapping captures coarse structure
-- Clustering: Projected latents cluster by video content, not randomly
-
-**Expected Outcome:** Poor reconstruction (LPIPS > 0.4) but demonstrates some structure preservation. This establishes the difficulty floor.
-
----
-
-### E2.2: MLP Adapter (2-3 Layers)
-
-**Objective:** Determine if non-linear transform significantly improves bridging.
-
-**Architecture Options:**
-
-**E2.2a: Shallow MLP (2 layers)**
 ```python
-class ShallowMLPAdapter(nn.Module):
-    def __init__(self, vlm_dim=1536, ltx_channels=128, hidden_dim=2048):
-        self.proj = nn.Sequential(
-            nn.Linear(vlm_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, ltx_channels)
-        )
-    # ~6M params with hidden_dim=2048
-```
+class ScalableQueryAdapter(nn.Module):
+    """Adapter with configurable capacity via width and depth."""
 
-**E2.2b: Deeper MLP (3 layers)**
-```python
-class DeepMLPAdapter(nn.Module):
-    def __init__(self, vlm_dim=1536, ltx_channels=128, hidden_dims=[2048, 1024]):
-        self.proj = nn.Sequential(
-            nn.Linear(vlm_dim, hidden_dims[0]),
-            nn.GELU(),
-            nn.LayerNorm(hidden_dims[0]),
-            nn.Linear(hidden_dims[0], hidden_dims[1]),
-            nn.GELU(),
-            nn.LayerNorm(hidden_dims[1]),
-            nn.Linear(hidden_dims[1], ltx_channels)
-        )
-    # ~9M params
-```
+    def __init__(
+        self,
+        vlm_dim: int = 3584,
+        dino_dim: int = 1024,
+        ltx_dim: int = 4096,
+        hidden_dim: int = 512,      # Controls width
+        n_layers: int = 2,           # Controls depth
+        n_queries: int = 77,         # Output tokens
+    ):
+        super().__init__()
 
-**E2.2c: Residual MLP**
-```python
-class ResidualMLPAdapter(nn.Module):
-    def __init__(self, vlm_dim=1536, ltx_channels=128, hidden_dim=1536):
-        self.input_proj = nn.Linear(vlm_dim, hidden_dim)
-        self.blocks = nn.ModuleList([
-            ResidualBlock(hidden_dim) for _ in range(4)
-        ])
-        self.output_proj = nn.Linear(hidden_dim, ltx_channels)
-    # ~12M params
-```
+        # Input projections
+        self.vlm_proj = nn.Linear(vlm_dim, hidden_dim)
+        self.dino_proj = nn.Linear(dino_dim, hidden_dim)
 
-**Training Details:**
-- Loss: MSE + 0.1 * LPIPS (perceptual regularization)
-- Learning rate: 5e-5
-- Steps: 20,000
-- Expected time: 4-8 hours per variant
+        # Learnable queries
+        self.queries = nn.Parameter(torch.randn(n_queries, hidden_dim) * 0.02)
 
-**Ablations:**
-- With vs. without LayerNorm
-- GELU vs. SiLU activation
-- Dropout (0.0, 0.1) for regularization
-
-**Success Criteria:**
-- LPIPS < 0.35: Significant improvement over linear
-- E2.2b or E2.2c within 10% of E2.2a despite 50% more params: Diminishing returns suggests learnable transform, not memorization
-
----
-
-### E2.3: Cross-Attention Adapter
-
-**Objective:** Test if attention-based bridging better preserves spatial relationships.
-
-**Rationale:** VLM latents are a token sequence; cross-attention may better align these with the spatial structure LTX expects.
-
-**Architecture:**
-```python
-class CrossAttentionAdapter(nn.Module):
-    def __init__(self, vlm_dim=1536, ltx_channels=128, num_heads=8, num_layers=4):
-        # Learnable spatial queries for LTX latent positions
-        self.spatial_queries = nn.Parameter(torch.randn(1, 128, ltx_channels))
-
+        # Cross-attention layers
         self.layers = nn.ModuleList([
             nn.TransformerDecoderLayer(
-                d_model=ltx_channels,
-                nhead=num_heads,
-                dim_feedforward=ltx_channels * 4,
-                batch_first=True
-            ) for _ in range(num_layers)
+                d_model=hidden_dim,
+                nhead=max(1, hidden_dim // 64),
+                dim_feedforward=hidden_dim * 4,
+                batch_first=True,
+            )
+            for _ in range(n_layers)
         ])
 
-        self.vlm_proj = nn.Linear(vlm_dim, ltx_channels)
+        # Output projection
+        self.out_proj = nn.Linear(hidden_dim, ltx_dim)
 
-    def forward(self, vlm_latents):
-        # vlm_latents: [B, T*H*W, 1536]
-        kv = self.vlm_proj(vlm_latents)  # [B, N, 128]
-        queries = self.spatial_queries.expand(B, -1, -1)  # [B, 128, 128]
+    def forward(self, vlm_features, dino_features):
+        B = vlm_features.size(0)
 
+        # Project and concatenate
+        vlm = self.vlm_proj(vlm_features)
+        dino = self.dino_proj(dino_features)
+        context = torch.cat([vlm, dino], dim=1)
+
+        # Cross-attention
+        queries = self.queries.unsqueeze(0).expand(B, -1, -1)
         for layer in self.layers:
-            queries = layer(queries, kv)
+            queries = layer(queries, context)
 
-        return queries.reshape(B, 128, T//8, H//32, W//32)
-
-    # ~5M params with 4 layers, 8 heads
+        return self.out_proj(queries)
 ```
 
-**Training Details:**
-- Loss: MSE + 0.1 * LPIPS + 0.05 * cosine_similarity_loss
-- Learning rate: 1e-4 (transformers often need higher LR)
-- Steps: 30,000
-- Expected time: 8-12 hours
+**Adapter configurations:**
 
-**Variants:**
-- **E2.3a:** 2 layers (~2.5M params)
-- **E2.3b:** 4 layers (~5M params)
-- **E2.3c:** 6 layers with LoRA-style low-rank attention (~4M params)
+| Config | hidden_dim | n_layers | Approx Params |
+|--------|------------|----------|---------------|
+| 5M | 256 | 2 | ~5M |
+| 10M | 384 | 2 | ~10M |
+| 20M | 512 | 3 | ~20M |
+| 50M | 768 | 4 | ~50M |
+| 100M | 1024 | 4 | ~100M |
 
-**Analysis:**
-- Attention pattern visualization: Do queries attend to spatially corresponding VLM tokens?
-- Compare reconstruction quality for different spatial positions (center vs. edges)
+**Training:**
+- Loss: LPIPS + 0.1 * L2
+- Optimizer: AdamW, lr=1e-4, weight_decay=1e-4
+- Batch size: 8
+- Epochs: 50
+- Gradient accumulation: 4 steps
 
-**Success Criteria:**
-- LPIPS < 0.30: Cross-attention provides meaningful improvement
-- Attention patterns show spatial correspondence (not uniform or random)
+**Metrics:**
+
+| Metric | Target | Acceptable | Failure |
+|--------|--------|------------|---------|
+| LPIPS (10M) | < 0.20 | < 0.22 | > 0.25 |
+| Param efficiency | > 0.90 | > 0.85 | < 0.80 |
+| Training time ratio | < 1.2x | < 1.5x | > 2x |
+
+**Deliverables:**
+- Scaling curve: LPIPS vs params
+- Efficiency metric: (Quality_10M / Quality_100M)
+- Training time comparison
+- Recommendation for optimal adapter size
+
+**Time estimate:** 5 days
 
 ---
 
-### E2.4: Parameter Scaling Study
+### E2.2: Architecture Comparison
 
-**Objective:** Characterize the adapter size vs. quality tradeoff to determine minimum viable size.
+**Objective:** Compare different adapter architectures at fixed parameter budget (~10M params).
 
-**Experimental Matrix:**
+**Architectures to test:**
 
-| Adapter Type | 1M | 5M | 10M | 50M | 100M |
-|--------------|-----|-----|-----|-----|------|
-| MLP | E2.4-M1 | E2.4-M5 | E2.4-M10 | E2.4-M50 | E2.4-M100 |
-| CrossAttn | E2.4-C1 | E2.4-C5 | E2.4-C10 | - | - |
+#### A. Query-based Adapter (baseline from E2.1)
+- Learned queries attend to concatenated features
+- Simple, proven architecture
 
-**Architecture Scaling:**
-
-For MLP:
+#### B. Bottleneck Adapter
 ```python
-# Scale by hidden dimension and depth
-1M:   [1536, 512, 128] -> 2 layers
-5M:   [1536, 2048, 128] -> 2 layers
-10M:  [1536, 2048, 1024, 128] -> 3 layers
-50M:  [1536, 4096, 4096, 2048, 128] -> 4 layers
-100M: [1536, 8192, 8192, 4096, 2048, 128] -> 5 layers
+class BottleneckAdapter(nn.Module):
+    """Compress features through bottleneck, then expand."""
+
+    def __init__(self, vlm_dim=3584, dino_dim=1024, ltx_dim=4096,
+                 bottleneck_dim=128, n_tokens=77):
+        super().__init__()
+
+        # Compress each stream
+        self.vlm_compress = nn.Sequential(
+            nn.Linear(vlm_dim, 512),
+            nn.GELU(),
+            nn.Linear(512, bottleneck_dim),
+        )
+        self.dino_compress = nn.Sequential(
+            nn.Linear(dino_dim, 512),
+            nn.GELU(),
+            nn.Linear(512, bottleneck_dim),
+        )
+
+        # Bottleneck fusion
+        self.fusion = nn.Sequential(
+            nn.Linear(bottleneck_dim * 2, 512),
+            nn.GELU(),
+            nn.Linear(512, 512),
+        )
+
+        # Expand to output
+        self.expand = nn.Sequential(
+            nn.Linear(512, n_tokens * ltx_dim // 4),
+            nn.GELU(),
+            nn.Linear(n_tokens * ltx_dim // 4, n_tokens * ltx_dim),
+        )
+
+    def forward(self, vlm_features, dino_features):
+        vlm = self.vlm_compress(vlm_features.mean(1))
+        dino = self.dino_compress(dino_features.mean(1))
+        fused = self.fusion(torch.cat([vlm, dino], dim=-1))
+        out = self.expand(fused)
+        return out.view(out.size(0), 77, -1)
 ```
 
-For Cross-Attention:
+#### C. LoRA-style Adapter
 ```python
-# Scale by number of layers and heads
-1M:  2 layers, 4 heads
-5M:  4 layers, 8 heads
-10M: 6 layers, 16 heads
+class LoRAAdapter(nn.Module):
+    """Low-rank projections for efficient bridging."""
+
+    def __init__(self, vlm_dim=3584, dino_dim=1024, ltx_dim=4096,
+                 rank=64, n_tokens=77):
+        super().__init__()
+
+        # Low-rank projections for VLM
+        self.vlm_down = nn.Linear(vlm_dim, rank, bias=False)
+        self.vlm_up = nn.Linear(rank, ltx_dim, bias=False)
+
+        # Low-rank projections for DINOv2
+        self.dino_down = nn.Linear(dino_dim, rank, bias=False)
+        self.dino_up = nn.Linear(rank, ltx_dim, bias=False)
+
+        # Query generation
+        self.query_gen = nn.Linear(rank * 2, n_tokens * ltx_dim)
+
+    def forward(self, vlm_features, dino_features):
+        vlm_low = self.vlm_down(vlm_features.mean(1))
+        dino_low = self.dino_down(dino_features.mean(1))
+        combined = torch.cat([vlm_low, dino_low], dim=-1)
+        out = self.query_gen(combined)
+        return out.view(out.size(0), 77, -1)
 ```
 
-**Training Details:**
-- Consistent training budget: 50,000 steps for all variants
-- Same data, same evaluation protocol
-- Learning rate sweep for each scale: [1e-5, 5e-5, 1e-4, 5e-4]
+#### D. Perceiver-style Adapter
+```python
+class PerceiverAdapter(nn.Module):
+    """Iterative cross-attention with fixed latent array."""
 
-**Expected Time:**
-- 1M-10M: 6-12 hours each
-- 50M-100M: 24-48 hours each
-- Total: ~1 week for full matrix
+    def __init__(self, vlm_dim=3584, dino_dim=1024, ltx_dim=4096,
+                 latent_dim=256, n_latents=77, n_iterations=3):
+        super().__init__()
 
-**Analysis:**
-1. Plot LPIPS vs. parameter count (log scale x-axis)
-2. Compute "quality per parameter" metric
-3. Identify knee point in scaling curve
-4. Compare MLP vs. CrossAttn at each scale
+        self.latents = nn.Parameter(torch.randn(n_latents, latent_dim) * 0.02)
 
-**Success Criteria:**
-- 10M adapter achieves >80% quality of 100M adapter
-- Clear diminishing returns visible in scaling curve
-- No evidence of memorization (test set performance matches train)
+        self.vlm_proj = nn.Linear(vlm_dim, latent_dim)
+        self.dino_proj = nn.Linear(dino_dim, latent_dim)
+
+        self.cross_attns = nn.ModuleList([
+            nn.MultiheadAttention(latent_dim, 4, batch_first=True)
+            for _ in range(n_iterations)
+        ])
+        self.self_attns = nn.ModuleList([
+            nn.MultiheadAttention(latent_dim, 4, batch_first=True)
+            for _ in range(n_iterations)
+        ])
+
+        self.out_proj = nn.Linear(latent_dim, ltx_dim)
+
+    def forward(self, vlm_features, dino_features):
+        B = vlm_features.size(0)
+        context = torch.cat([
+            self.vlm_proj(vlm_features),
+            self.dino_proj(dino_features)
+        ], dim=1)
+
+        x = self.latents.unsqueeze(0).expand(B, -1, -1)
+        for cross_attn, self_attn in zip(self.cross_attns, self.self_attns):
+            x = x + cross_attn(x, context, context)[0]
+            x = x + self_attn(x, x, x)[0]
+
+        return self.out_proj(x)
+```
+
+**Protocol:**
+1. Implement each architecture at ~10M params
+2. Train with identical procedure
+3. Compare reconstruction quality and inference speed
+
+**Metrics:**
+
+| Metric | Per Architecture |
+|--------|------------------|
+| LPIPS | Lower is better |
+| Spatial IoU | Higher is better |
+| Inference latency | Lower is better |
+| Training stability | Loss variance |
+| Memory usage | Peak VRAM |
+
+**Deliverables:**
+- Architecture comparison table
+- Best architecture recommendation
+- Trade-off analysis (quality vs speed)
+
+**Time estimate:** 4 days
 
 ---
 
-## 5. Success Metrics
+### E2.3: Training Strategy Optimization
 
-### 5.1 Primary Metrics
+**Objective:** Find optimal training strategy for the chosen adapter architecture.
 
-| Metric | Target (Success) | Acceptable | Failure |
-|--------|------------------|------------|---------|
-| LPIPS (10M adapter) | < 0.25 | < 0.35 | > 0.45 |
-| LPIPS 10M/100M ratio | > 0.80 | > 0.70 | < 0.60 |
-| Training convergence | Stable, decreasing | Noisy but improving | Divergent or flat |
-| Test/train gap | < 10% | < 20% | > 30% (memorization) |
+**Strategies to test:**
 
-### 5.2 Secondary Metrics
+#### A. Loss Functions
 
-| Metric | Purpose |
-|--------|---------|
-| MSE (latent space) | Direct alignment measure |
-| Cosine similarity | Semantic alignment |
-| FVD | Video quality (temporal coherence) |
-| PSNR | Pixel-level reconstruction |
-| Human eval | Subjective quality assessment |
+| Loss | Description |
+|------|-------------|
+| LPIPS only | Perceptual loss |
+| LPIPS + L2 | Perceptual + pixel |
+| LPIPS + SSIM | Perceptual + structural |
+| Multi-scale LPIPS | Multiple resolutions |
 
-### 5.3 Training Convergence Criteria
+#### B. Learning Rate Schedules
 
-**Healthy Training:**
-- Loss decreases monotonically (smoothed over 100 steps)
-- Gradient norm stable (not exploding or vanishing)
-- Validation loss tracks training loss
+| Schedule | Description |
+|----------|-------------|
+| Constant | lr=1e-4 |
+| Cosine decay | Start 1e-4, decay to 1e-6 |
+| Warmup + decay | 1k warmup, cosine decay |
+| Cyclic | Oscillate between 1e-5 and 1e-4 |
 
-**Early Stopping:**
-- Validation loss increases for 5 consecutive evaluations
-- Or maximum steps reached
+#### C. Data Augmentation
 
-**Convergence Definition:**
-- Training loss change < 1% over 5000 steps
-- Validation LPIPS stabilized
+| Augmentation | Description |
+|--------------|-------------|
+| None | Baseline |
+| Color jitter | Random brightness/contrast |
+| Random crop | Scale 0.8-1.0 |
+| MixUp | Blend image pairs |
+
+#### D. Regularization
+
+| Technique | Description |
+|-----------|-------------|
+| Dropout | 0.1, 0.2 on adapter layers |
+| Weight decay | 1e-4, 1e-3 |
+| Label smoothing | 0.1 (for auxiliary tasks) |
+
+**Protocol:**
+1. Grid search over loss functions
+2. Grid search over learning rate schedules
+3. Ablate augmentation strategies
+4. Combine best settings
+
+**Metrics:**
+
+| Metric | Target |
+|--------|--------|
+| Final LPIPS | Minimum achievable |
+| Training stability | Low variance |
+| Convergence speed | Epochs to plateau |
+
+**Deliverables:**
+- Training recipe with best hyperparameters
+- Ablation results table
+- Learning curves for each strategy
+
+**Time estimate:** 4 days
 
 ---
 
-## 6. Failure Criteria
+### E2.4: Final Efficiency Validation
 
-The adapter bridging approach should be considered **failed** if:
+**Objective:** Comprehensive validation of the optimized adapter against success criteria.
 
-### 6.1 Absolute Failures
+**Protocol:**
+1. Train final adapter with best architecture + training strategy
+2. Evaluate on held-out test sets
+3. Compute parameter efficiency metric
+4. Measure inference latency
+5. Compare to P2 baseline
 
-1. **No convergence:** Training loss does not decrease below initial value after 10,000 steps
-2. **Quality floor:** Best adapter (any size) achieves LPIPS > 0.45 (worse than blurry baseline)
-3. **Memorization:** Test LPIPS > 1.3x train LPIPS consistently across scales
+**Evaluation datasets:**
+- Synthetic shapes (500 samples) - Spatial precision
+- COCO val (500 samples) - Real-world objects
+- Something-Something v2 (200 clips) - Temporal coherence
 
-### 6.2 Practical Failures
+**Metrics (success criteria from research_plan.yaml):**
 
-1. **Scale requirement:** Achieving LPIPS < 0.35 requires >50M parameters
-2. **Training instability:** Cannot achieve stable training without extensive hyperparameter search
-3. **Computational cost:** Training time >1 week for 10M adapter on A100
+| Metric | Target | Acceptable | Failure |
+|--------|--------|------------|---------|
+| param_efficiency | > 0.90 | > 0.85 | < 0.80 |
+| LPIPS (10M adapter) | < 0.18 | < 0.20 | > 0.25 |
+| Spatial IoU | > 0.75 | > 0.70 | < 0.65 |
+| Inference latency | < 150ms | < 200ms | > 300ms |
 
-### 6.3 Diagnostic Signals of Failure
+**param_efficiency calculation:**
+```
+param_efficiency = 1 - (LPIPS(10M) - LPIPS(100M)) / LPIPS(100M)
+```
+- Target: 10M achieves >90% of 100M quality
+- If 100M LPIPS = 0.16, then 10M must achieve LPIPS < 0.178
 
-| Signal | Interpretation |
-|--------|----------------|
-| Linear scaling curve (no knee) | Spaces require brute-force alignment, not learnable transform |
-| Attention patterns uniform/random | No spatial correspondence found |
-| Reconstruction collapses to mean | Adapter ignores VLM input |
-| Fine details lost, coarse OK | Adapter learns compression, not alignment |
+**Additional metrics:**
+- Memory reduction: 100M VRAM vs 10M VRAM
+- Training time ratio: 10M epochs vs 100M epochs
+- Generalization gap: train vs val LPIPS
+
+**Deliverables:**
+- Final trained adapter checkpoint
+- Comprehensive metrics table
+- Side-by-side visualizations
+- Gate 2 readiness assessment
+- Recommended configuration for Phase 3
+
+**Time estimate:** 3 days
 
 ---
 
-## 7. Pivot Options
+## 6. Success Criteria
 
-If small adapter approach fails, consider these alternatives:
+### 6.1 Primary Success Criteria (from research_plan.yaml)
 
-### 7.1 Extract Earlier VLM Representations
+| Metric | Target | Acceptable | Failure |
+|--------|--------|------------|---------|
+| **param_efficiency** | > 0.90 | > 0.85 | < 0.80 |
 
-**Rationale:** Pre-merge patch embeddings may contain more spatial information.
+**Definition:** 10M parameter adapter achieves X% of 100M parameter adapter reconstruction quality, where:
+- param_efficiency = 1 - (LPIPS(10M) - LPIPS(100M)) / LPIPS(100M)
 
-**Implementation:**
-```python
-# Instead of post-merge tokens, extract raw ViT patches
-vision_outputs = model.visual.get_intermediate_layers(pixel_values, n=[6, 12, 18])
-early_latents = vision_outputs[0]  # Earlier layers, more spatial
-```
+### 6.2 Secondary Success Criteria
 
-**Pros:** Preserves spatial resolution (4x more tokens)
-**Cons:** 4x computational cost, may lose semantic richness
+| Metric | Target | Notes |
+|--------|--------|-------|
+| LPIPS (10M adapter) | < 0.18 | Must be <12.5% worse than 100M |
+| Spatial IoU | > 0.75 | Maintain P2 spatial quality |
+| Inference latency | < 150ms | Adapter contribution only |
+| Training time | < 24 GPU-hours | For 10M adapter |
+| Memory (10M) | < 0.5GB | Adapter weights only |
 
-### 7.2 Use Intermediate LTX Representations
+### 6.3 Comparison Baselines
 
-**Rationale:** Target an intermediate space in LTX that's closer to semantic content.
+| Baseline | Source | Metrics |
+|----------|--------|---------|
+| P2 Fusion Module | P2 results | LPIPS=0.162, params=78M |
+| VLM-only (C1) | C1 results | LPIPS=0.264 |
 
-**Implementation:**
-- Align VLM latents to LTX DiT intermediate layers (e.g., layer 14/28)
-- Let LTX diffusion process handle the final alignment
+### 6.4 Go/No-Go Decision Points
 
-**Pros:** May find closer latent space alignment
-**Cons:** Requires understanding LTX internal representations
+| Checkpoint | Timing | Criteria | Decision |
+|------------|--------|----------|----------|
+| E2.1 Complete | Day 5 | 10M efficiency > 0.85 | Continue / Increase min size |
+| E2.2 Complete | Day 9 | Best arch identified | Continue / Iterate |
+| E2.3 Complete | Day 13 | Training recipe found | Continue / Extend |
+| E2.4 Complete | Day 16 | param_efficiency > 0.90 | Pass Gate / Investigate |
 
-### 7.3 Hybrid Adapter with Auxiliary Objectives
+---
 
-**Rationale:** Add supervision signals that guide alignment.
+## 7. Failure Criteria
 
-**Implementation:**
-```python
-loss = mse_loss + 0.1 * lpips_loss + 0.1 * clip_similarity_loss + 0.05 * object_detection_loss
-```
+### 7.1 Hard Failures (abort experiment)
 
-**Pros:** Multiple signals may find better alignment
-**Cons:** More complex training, potential loss balancing issues
+1. **Scaling shows no efficiency gains (E2.1):**
+   - 10M params < 70% of 100M quality
+   - Implication: Small adapters fundamentally insufficient
+   - Action: Investigate architectural bottlenecks, consider hybrid training
 
-### 7.4 Fine-tune LTX Decoder Jointly
+2. **All architectures fail quality threshold (E2.2):**
+   - Best architecture LPIPS > 0.25 at 10M params
+   - Implication: Architectural search space too limited
+   - Action: Expand search to include transformer variants, MoE
 
-**Rationale:** If adapter alone can't bridge, allow decoder to meet halfway.
+3. **Training is unstable across all strategies (E2.3):**
+   - Loss diverges or oscillates wildly
+   - Implication: Feature distribution mismatch
+   - Action: Add feature normalization, investigate encoder consistency
+
+### 7.2 Soft Failures (investigate before pivoting)
+
+1. **Marginal efficiency gains:** param_efficiency 0.80-0.85
+   - May need 20M params as minimum viable size
+
+2. **Latency regression:** Adapter adds >200ms
+   - May need architectural optimization or quantization
+
+3. **Generalization gap:** Train LPIPS 0.18, val LPIPS 0.25
+   - May need more diverse training data or regularization
+
+---
+
+## 8. Pivot Options
+
+If C2 approach fails, consider these alternatives:
+
+### 8.1 Increase Minimum Adapter Size
+
+**Rationale:** Accept 20-30M params if 10M is insufficient.
+
+**Trade-off:** Higher memory, slower inference, but within acceptable limits.
+
+### 8.2 Joint Adapter + Decoder LoRA Training
+
+**Rationale:** Allow video decoder to "meet halfway" via LoRA fine-tuning.
 
 **Implementation:**
 - LoRA on LTX transformer (4-8M additional params)
 - Joint training: adapter + decoder LoRA
 
-**Pros:** More capacity to find alignment
-**Cons:** Loses modularity, more expensive training
+**Pros:** More capacity for alignment
+**Cons:** Loses pure modularity
 
-### 7.5 Alternative Video Decoder
+### 8.3 Distillation from Large Adapter
 
-**Rationale:** LTX's 128-channel space may be unusually hard to target.
+**Rationale:** Train large adapter first, distill to small.
 
-**Candidates:**
-- **CogVideoX:** 16 channels, more standard architecture
-- **Open-Sora:** May have closer alignment to VLM-style representations
+**Implementation:**
+- Train 100M adapter to convergence
+- Use teacher-student distillation to 10M
 
-**Pros:** May find easier alignment
-**Cons:** Loses LTX speed advantage (critical for real-time prediction)
+**Pros:** May capture key mappings efficiently
+**Cons:** Requires 2x training time
 
----
+### 8.4 Mixture of Experts Adapter
 
-## 8. Timeline
+**Rationale:** Sparse computation allows larger effective capacity.
 
-### Phase 1: Setup and Baselines (Days 1-3)
-| Day | Task | Deliverable |
-|-----|------|-------------|
-| 1 | Environment setup, model loading validation | Working inference pipeline |
-| 1 | Data preprocessing pipeline | Preprocessed latent pairs (10K videos) |
-| 2 | Implement latent extraction from Qwen2.5-VL | Verified VLM latent quality |
-| 2 | Implement LTX latent extraction | Verified target latent quality |
-| 3 | E2.1: Train and evaluate linear probe | Baseline results, initial analysis |
+**Implementation:**
+- 8 expert adapters, each 2M params
+- Router selects top-2 per sample
+- Effective 4M active, 16M total
 
-### Phase 2: Architecture Exploration (Days 4-8)
-| Day | Task | Deliverable |
-|-----|------|-------------|
-| 4 | E2.2a: Shallow MLP training | MLP baseline |
-| 5 | E2.2b, E2.2c: Deeper MLP variants | MLP comparison |
-| 6-7 | E2.3: Cross-attention adapters (2-6 layers) | Attention analysis |
-| 8 | Analysis and comparison | Best architecture selected |
-
-### Phase 3: Scaling Study (Days 9-16)
-| Day | Task | Deliverable |
-|-----|------|-------------|
-| 9-10 | E2.4-M1, M5, M10 (small MLPs) | Small-scale results |
-| 11-13 | E2.4-M50, M100 (large MLPs) | Full MLP scaling curve |
-| 14-15 | E2.4-C1, C5, C10 (cross-attention scaling) | Cross-attention scaling |
-| 16 | Final analysis, curve fitting | Scaling report |
-
-### Phase 4: Documentation and Handoff (Days 17-18)
-| Day | Task | Deliverable |
-|-----|------|-------------|
-| 17 | Write results document | Experimental report |
-| 18 | Prepare trained adapters, reproduce key results | Artifacts + code |
-
-**Total Estimated Time:** 18 days (~3 weeks)
-
-**Critical Path Risks:**
-- Model loading issues: +2 days
-- Training instability requiring hyperparameter search: +3 days
-- Inconclusive results requiring additional experiments: +5 days
+**Pros:** Larger capacity with sparse compute
+**Cons:** More complex training dynamics
 
 ---
 
-## 9. Dependencies
+## 9. Implementation Plan
 
-### 9.1 Dependencies on Other Claims
+### 9.1 Handler Structure
 
-| Claim | Dependency Type | Notes |
-|-------|-----------------|-------|
-| C1 (VLM contains spatial info) | Soft | Can proceed in parallel; if C1 fails, C2 results may be moot |
-| C3 (VLM predicts futures) | None | C2 tests reconstruction, not prediction |
-| C4 (Pixel verification) | None | Independent |
-
-**Recommendation:** Start C2 experiments immediately. Results from C1 (especially pre-merge vs. post-merge comparison) may inform which VLM representations to use in C2.
-
-### 9.2 Infrastructure Dependencies
-
-| Dependency | Status | Blocker? |
-|------------|--------|----------|
-| GPU access (A100-40GB) | Required | Yes |
-| Something-Something v2 access | Required | Yes (license required) |
-| Qwen2.5-VL-7B weights | Available | No |
-| LTX-Video weights | Available | No |
-| W&B project setup | Recommended | No |
-
-### 9.3 Code Dependencies
-
-```python
-# Required modules to implement
-from foresight.models.vlm import QwenLatentExtractor
-from foresight.models.video import LTXLatentExtractor
-from foresight.adapters import LinearAdapter, MLPAdapter, CrossAttentionAdapter
-from foresight.training import AdapterTrainer
-from foresight.evaluation import ReconstructionMetrics
+```
+infra/modal/handlers/c2/
+├── __init__.py           # Exports get_handlers()
+├── e2_1.py               # Baseline adapter scaling study
+├── e2_2.py               # Architecture comparison
+├── e2_3.py               # Training strategy optimization
+├── e2_4.py               # Final efficiency validation
+├── adapters/
+│   ├── query_adapter.py  # Query-based adapter
+│   ├── bottleneck.py     # Bottleneck adapter
+│   ├── lora_adapter.py   # LoRA-style adapter
+│   └── perceiver.py      # Perceiver-style adapter
+└── utils/
+    ├── feature_extraction.py  # Reuse from P2
+    └── evaluation.py          # Metrics computation
 ```
 
----
+### 9.2 Reuse from P2
 
-## 10. Deliverables
+The following can be directly reused:
+- `handlers/p2/e_p2_1.py`: DINOv2 feature extraction (`extract_dinov2_features`)
+- `handlers/p2/e_p2_1.py`: Dataset generation (`generate_position_dataset`, `generate_detection_dataset`)
+- VLM feature extraction patterns
+- Evaluation metrics (LPIPS, IoU computation)
 
-### 10.1 Trained Artifacts
+### 9.3 New Components Required
 
-| Artifact | Description | Location |
-|----------|-------------|----------|
-| `adapter_linear_v1.pt` | Linear baseline | `checkpoints/c2/linear/` |
-| `adapter_mlp_10m_v1.pt` | Best MLP (10M) | `checkpoints/c2/mlp/` |
-| `adapter_crossattn_5m_v1.pt` | Best cross-attention | `checkpoints/c2/crossattn/` |
-| `adapter_mlp_100m_v1.pt` | Large MLP reference | `checkpoints/c2/mlp/` |
-
-### 10.2 Benchmark Results
-
-| Benchmark | Format | Location |
-|-----------|--------|----------|
-| Reconstruction quality (all adapters) | CSV + plots | `results/c2/reconstruction.csv` |
-| Scaling curves | Plots (PNG, PDF) | `results/c2/scaling/` |
-| Attention visualizations | Images | `results/c2/attention/` |
-| Latent space t-SNE | Interactive HTML | `results/c2/tsne/` |
-
-### 10.3 Documentation
-
-| Document | Content | Location |
-|----------|---------|----------|
-| Experimental log | Daily notes, hyperparams, observations | `research/experiments/c2-log.md` |
-| Results summary | Key findings, go/no-go decision | `research/experiments/c2-results.md` |
-| Technical report | Full analysis for writeup | `research/reports/c2-adapter-bridging.md` |
-
-### 10.4 Code
-
-| Module | Purpose | Location |
-|--------|---------|----------|
-| Latent extraction | VLM/LTX latent pipelines | `src/foresight/extraction/` |
-| Adapter architectures | All tested architectures | `src/foresight/adapters/` |
-| Training scripts | Reproducible training | `scripts/train_adapter.py` |
-| Evaluation scripts | Metrics computation | `scripts/evaluate_adapter.py` |
-| Notebooks | Analysis and visualization | `notebooks/c2_analysis.ipynb` |
+1. **Scalable adapter implementations** (4 architectures)
+2. **Training harness** with configurable loss/optimizer
+3. **Efficiency metric computation**
+4. **Adapter checkpointing** for comparison
 
 ---
 
-## 11. Risk Assessment
+## 10. Timeline
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| VLM latents lack spatial info | Medium | High | Pivot to pre-merge extraction (7.1) |
-| LTX latent space too different | Medium | High | Try alternative decoders (7.5) |
-| Training instability | Low | Medium | LR sweep, gradient clipping |
-| Memorization | Low | High | Strong train/test split, data augmentation |
-| Compute availability | Medium | Medium | Cloud burst compute (Lambda, RunPod) |
+| Phase | Days | Experiments | Milestones |
+|-------|------|-------------|------------|
+| Setup | 1 | Codebase prep | Adapter templates ready |
+| E2.1 | 5 | Scaling study | Efficiency curve |
+| E2.2 | 4 | Architecture comparison | Best architecture |
+| E2.3 | 4 | Training optimization | Best training recipe |
+| E2.4 | 3 | Final validation | Gate 2 assessment |
+| Analysis | 2 | Final report | Documentation |
+| **Total** | **19 days** | | |
 
----
+**Parallelization opportunities:**
+- E2.1 adapter training can run in parallel across scales
+- E2.2 architectures can train in parallel
+- E2.3 hyperparameter search can use parallel trials
 
-## 12. Go/No-Go Decision Framework
-
-After completing experiments, use this framework:
-
-### GREEN (Proceed to C3)
-- LPIPS < 0.30 with 10M adapter
-- Clear diminishing returns in scaling curve
-- No memorization signals
-- Training stable and reproducible
-
-### YELLOW (Proceed with caution)
-- LPIPS 0.30-0.40 with 10M adapter
-- Scaling curve shows continued improvement (may need more capacity)
-- Consider pivots 7.1 or 7.4 before proceeding
-
-### RED (Major pivot required)
-- LPIPS > 0.40 with 10M adapter
-- Linear scaling (no diminishing returns)
-- Memorization detected
-- Requires >50M params for acceptable quality
-
-**Decision Point:** End of Phase 3 (Day 16)
+**Optimistic timeline:** 14 days
+**Pessimistic timeline:** 25 days
 
 ---
 
-## Appendix A: Latent Space Visualization Protocol
+## 11. Resource Requirements
 
-To understand latent alignment, create these visualizations:
+### 11.1 Compute
 
-1. **t-SNE/UMAP of VLM latents** (colored by video category)
-2. **t-SNE/UMAP of LTX latents** (same videos, same coloring)
-3. **t-SNE/UMAP of projected VLM latents** (after adapter, compare to target)
-4. **Cosine similarity heatmap** (VLM token i vs. LTX position j)
-5. **Attention patterns** (for cross-attention adapter, what attends to what?)
+| Phase | GPU Type | GPU-Hours | Notes |
+|-------|----------|-----------|-------|
+| E2.1 | A100-80GB | 80 | 5 adapter scales x 16h each |
+| E2.2 | A100-80GB | 60 | 4 architectures x 15h each |
+| E2.3 | A100-80GB | 50 | ~20 hyperparameter configs |
+| E2.4 | A100-80GB | 30 | Final training + evaluation |
+| **Total** | | **220** | |
 
-## Appendix B: Reconstruction Quality Examples
+**Estimated cost:** ~$440 (at $2/GPU-hour)
 
-Create a gallery showing:
-- Input frames (ground truth)
-- VLM-encoded -> adapter -> LTX-decoded (reconstructed)
-- Difference maps (highlight where reconstruction fails)
+### 11.2 Storage
 
-Categories:
-- Simple scenes (single object, static background)
-- Complex scenes (multiple objects, occlusion)
-- High-motion scenes (fast movement)
-- Fine detail scenes (text, small objects)
+| Item | Size | Notes |
+|------|------|-------|
+| Cached features (from P2) | ~50GB | Reuse |
+| Adapter checkpoints | ~5GB | 10-100M params x 5 scales |
+| Results/artifacts | ~5GB | Visualizations, metrics |
+| **Total additional** | ~10GB | |
 
-## Appendix C: Related Experiments
+---
 
-| Experiment | Relationship | Notes |
-|------------|--------------|-------|
-| C1: VLM Information Content | Upstream | C2 depends on VLM having sufficient info |
-| C3: Future Prediction | Downstream | Uses C2 adapter for prediction |
-| HunyuanVideo adapter | Alternative | If LTX fails, try HunyuanVideo bridging |
+## 12. Dependencies
+
+### 12.1 Prerequisites (must complete before starting)
+
+- [x] P2 experiment completed (provides hybrid encoder baseline)
+- [x] Gate 1 passed (validates reconstruction approach)
+- [x] DINOv2-ViT-L validated (spatial preservation confirmed)
+- [ ] GPU resources allocated (A100-80GB for training)
+
+### 12.2 Blocks
+
+This experiment blocks:
+- **C3 (Future Prediction):** Needs efficient adapter for prediction training
+- **Q3 (Temporal Coherence):** Needs stable adapter for temporal analysis
+- **Gate 2:** Cannot proceed without C2 completion
+
+### 12.3 External Dependencies
+
+- Modal infrastructure for GPU access
+- W&B for experiment tracking
+- Pre-cached models from P2
+
+---
+
+## 13. Risks and Mitigations
+
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| 10M adapter quality too low | Medium (30%) | High | Test 20M as fallback target |
+| Training instability | Low (15%) | Medium | Gradient clipping, warmup |
+| Feature distribution shift | Low (10%) | Medium | Add layer normalization |
+| Latency overhead too high | Low (10%) | Medium | Test FP16 inference |
+| Longer timeline | Medium (25%) | Low | Built-in buffer, parallelization |
+
+---
+
+## 14. Deliverables
+
+### 14.1 Code Artifacts
+
+| Artifact | Location | Description |
+|----------|----------|-------------|
+| Query adapter | `handlers/c2/adapters/query_adapter.py` | Baseline adapter |
+| Bottleneck adapter | `handlers/c2/adapters/bottleneck.py` | Compressed adapter |
+| LoRA adapter | `handlers/c2/adapters/lora_adapter.py` | Low-rank adapter |
+| Perceiver adapter | `handlers/c2/adapters/perceiver.py` | Iterative adapter |
+| Training harness | `handlers/c2/utils/training.py` | Configurable training |
+
+### 14.2 Checkpoints
+
+| Checkpoint | Size | Description |
+|------------|------|-------------|
+| `adapter_5m_best.pt` | ~20MB | 5M adapter |
+| `adapter_10m_best.pt` | ~40MB | 10M adapter |
+| `adapter_20m_best.pt` | ~80MB | 20M adapter |
+| `adapter_50m_best.pt` | ~200MB | 50M adapter |
+| `adapter_100m_best.pt` | ~400MB | 100M reference |
+
+### 14.3 Reports
+
+| Report | Format | Audience |
+|--------|--------|----------|
+| Technical findings | `research/experiments/c2-adapter-bridging/FINDINGS.md` | Research team |
+| Results data | `research/experiments/c2-adapter-bridging/results.yaml` | Validation system |
+| Scaling curve | `artifacts/scaling_curve.png` | Visualization |
+
+---
+
+## 15. Open Questions
+
+To be resolved during experiments:
+
+1. **Optimal bottleneck dimension:** What is the minimum information-preserving bottleneck?
+2. **Query count:** Do we need 77 output tokens or can we use fewer?
+3. **Positional encoding:** Should the adapter include spatial positional info?
+4. **Stream weighting:** Should VLM and DINOv2 features be weighted differently?
+5. **Temporal handling:** How does the adapter handle video (frame-by-frame vs temporal pooling)?
+
+---
+
+## 16. Relation to Research Plan
+
+From `research/research_plan.yaml`:
+
+```yaml
+c2-adapter-bridging:
+  name: "C2: Adapter Bridging"
+  type: claim
+  phase: 2
+  status: not_started
+  description: "A small adapter (~10-50M params) can effectively bridge VLM to video decoder"
+  sub_experiments: [e2_1, e2_2, e2_3, e2_4]
+  success_criteria:
+    param_efficiency:
+      target: 0.9
+      acceptable: 0.8
+      failure: 0.6
+      direction: higher
+      note: "10M params achieves X% of 100M performance"
+  dependencies: [p2-hybrid-encoder]
+```
+
+This experiment is required to pass **Gate 2: Bridging** which also requires Q3 (Temporal Coherence).
+
+---
+
+## 17. Revision History
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 0.1 | 2025-01-18 | Claude | Initial draft (pre-P2) |
+| 1.0 | 2026-01-20 | Claude | Complete rewrite incorporating P2 results, updated architecture designs, detailed sub-experiments |

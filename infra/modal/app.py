@@ -62,6 +62,11 @@ gpu_image = (
         Path(__file__).parent / "handlers",
         remote_path="/root/handlers",
     )
+    # Add research_plan.yaml for experiment configuration
+    .add_local_file(
+        Path(__file__).parent.parent.parent / "research" / "research_plan.yaml",
+        remote_path="/research/research_plan.yaml",
+    )
 )
 
 # Volume for persisting results and caching models
@@ -146,9 +151,10 @@ def run_experiment(experiment_id: str, sub_experiment: str | None = None, stub_m
         sub_experiment: Optional specific sub-experiment (e.g., 'e1_2')
         stub_mode: If True, run with stub handlers to test the harness
     """
-    # Set up environment
+    # Set up environment - cache all models to persistent volume
     os.environ["HF_HOME"] = "/model-cache"
     os.environ["TRANSFORMERS_CACHE"] = "/model-cache"
+    os.environ["TORCH_HOME"] = "/model-cache/torch"  # DINOv2 uses torch.hub
 
     # Import runner (needs to be inside function for Modal serialization)
     import sys

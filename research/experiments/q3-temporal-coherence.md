@@ -1,641 +1,675 @@
-# Q3: Temporal Coherence Research Plan
+# Experiment Plan: Q3 - Temporal Coherence
 
-**Open Question:** Can we generate temporally coherent video (not just good individual frames)?
-
-**Risk Level:** MEDIUM - Video decoders handle temporal modeling inherently, but our VLM conditioning injection may disrupt learned temporal dynamics.
+**Question:** Does conditioning injection from the hybrid encoder disrupt video decoder's temporal dynamics?
 
 **Status:** Not Started
-**Created:** 2025-01-18
-**Dependencies:** Working conditioning adapter (from C2 experiments)
+**Priority:** High (required for Gate 2)
+**Owner:** TBD
+**Created:** 2026-01-18
+**Updated:** 2026-01-20
+
+**Dependencies:** P2 Hybrid Encoder (PASSED - spatial_iou=0.837, lpips=0.162)
 
 ---
 
 ## 1. Objective
 
-Ensure that videos generated through our GLP architecture maintain:
+Validate that videos generated through the GLP architecture (hybrid encoder + LTX-Video) maintain temporal coherence across frames. This is critical because:
 
-1. **Temporal smoothness** - No flickering, jitter, or abrupt frame-to-frame changes
-2. **Motion continuity** - Objects follow physically plausible trajectories
-3. **Causal consistency** - Effects follow causes (ball hits cup → cup moves)
-4. **Identity preservation** - Objects maintain consistent appearance across frames
+1. **LTX-Video has learned temporal priors** - Causal 3D convolutions and temporal attention create smooth motion
+2. **Our conditioning injection could disrupt these priors** - VLM/DINOv2 features might override learned dynamics
+3. **Poor temporal coherence would make generated videos unusable** - Flickering, identity drift, or physics violations
 
-The key challenge: LTX-Video has sophisticated temporal modeling via its causal 3D convolutions and temporal attention. Injecting VLM conditioning through our adapter risks disrupting these learned temporal priors.
+**Core Question:** Can we inject hybrid encoder conditioning while preserving LTX-Video's temporal modeling capabilities?
+
+**Why This Matters:** Gate 2 requires both C2 (adapter efficiency) and Q3 (temporal coherence) to pass. Without temporal coherence, the video prediction system cannot produce useful visualizations for reasoning verification.
 
 ---
 
-## 2. Background
+## 2. Hypothesis
 
-### 2.1 How LTX-Video Maintains Temporal Consistency
+**Primary Hypothesis:**
+The hybrid encoder conditioning (DINOv2 spatial + VLM semantic features) can be injected into LTX-Video without significantly degrading temporal coherence, achieving:
+- temporal_consistency > 0.7 (acceptable threshold)
+- Ideally temporal_consistency > 0.8 (target threshold)
+
+**Null Hypothesis:**
+Conditioning injection fundamentally disrupts LTX-Video's temporal modeling, causing unacceptable flickering, identity drift, or motion discontinuities regardless of injection strategy.
+
+**Falsifiability:**
+- If temporal_consistency < 0.5: Fundamental incompatibility (FAIL)
+- If conditioning strength vs coherence tradeoff has no acceptable operating point: Architecture needs redesign
+- If human evaluation shows > 50% "unnatural motion" ratings: Automated metrics are insufficient
+
+---
+
+## 3. Background
+
+### 3.1 How LTX-Video Maintains Temporal Consistency
 
 LTX-Video employs several mechanisms for temporal coherence:
 
 1. **Causal 3D Convolutions in VAE**
    - Encoder uses causal temporal convolutions (8x temporal compression)
    - First frame encoded independently; subsequent frames conditioned on previous
-   - This creates an autoregressive structure in latent space
+   - Creates autoregressive structure in latent space
 
 2. **Temporal Attention in DiT**
-   - The 28-block DiT uses spatiotemporal attention
+   - 28-block DiT uses spatiotemporal attention
    - Tokens attend across both spatial and temporal dimensions
-   - RoPE positional encoding with exponential frequency spacing preserves temporal relationships
+   - RoPE positional encoding preserves temporal relationships
 
 3. **Joint Denoising**
    - All frames denoised together (not independently)
    - Global noise schedule ensures consistent denoising trajectory
-   - Denoising decoder operates on temporally-coherent latents
 
 4. **High Channel Latents (128 channels)**
-   - More channels = more capacity to encode temporal relationships
-   - Information flows through latent space rather than being lost
+   - More capacity to encode temporal relationships
+   - Information flows through latent space
 
-### 2.2 Common Failure Modes
+### 3.2 P2 Hybrid Encoder Foundation
 
-| Failure Mode | Description | Likely Cause |
-|-------------|-------------|--------------|
-| **Flickering** | High-frequency intensity/color oscillation between frames | Inconsistent conditioning, noise injection artifacts |
-| **Identity drift** | Objects gradually change appearance | Weak temporal attention, conditioning override |
-| **Discontinuous motion** | Objects "teleport" between frames | Broken temporal consistency in latent space |
-| **Physics violations** | Impossible trajectories (objects passing through each other) | Conditioning conflicts with learned physics priors |
-| **Temporal aliasing** | Motion appears jerky/stuttered | Temporal downsampling artifacts |
-| **Causal violations** | Effects precede causes | Bidirectional attention bleeding |
+From P2 results (passed Gate 1):
+- **Spatial IoU:** 0.837 (target > 0.60)
+- **LPIPS:** 0.162 (target < 0.35)
+- **Architecture:** DINOv2-ViT-L + VLM cross-attention fusion
+- **Latency overhead:** 31.9% (acceptable)
 
-### 2.3 How Our Conditioning Might Break Temporal Coherence
+The P2 fusion module outputs conditioning vectors that will be injected into LTX-Video. Q3 tests whether this injection disrupts temporal modeling.
+
+### 3.3 How Conditioning Might Break Temporal Coherence
 
 **Risk 1: Per-frame conditioning variance**
-If our adapter produces slightly different conditioning for semantically-identical content, this variance propagates to frame-level inconsistencies.
+If the adapter produces slightly different conditioning for semantically-identical content, this variance propagates to frame-level inconsistencies.
 
 **Risk 2: Override of temporal attention**
-Strong conditioning signal might dominate over learned temporal priors, causing the model to generate each frame "independently" rather than coherently.
+Strong conditioning signal might dominate over learned temporal priors, causing the model to generate each frame "independently."
 
 **Risk 3: Latent space misalignment**
-VLM latents may not respect the temporal structure of LTX-Video's latent space. Injecting misaligned latents could corrupt the causal encoding.
+Hybrid encoder latents may not respect LTX-Video's temporal structure. Injecting misaligned latents could corrupt causal encoding.
 
 **Risk 4: Conditioning injection point**
-Where we inject conditioning (early layers, late layers, cross-attention) affects which temporal mechanisms are preserved or disrupted.
+Where we inject conditioning (early/late layers, cross-attention) affects which temporal mechanisms are preserved.
 
-### 2.4 Metrics for Temporal Coherence
+### 3.4 Temporal Coherence Metric
 
-| Metric | What It Measures | Implementation |
-|--------|-----------------|----------------|
-| **Flow Smoothness (FS)** | Consistency of optical flow between frames | Compute optical flow (RAFT), measure flow acceleration variance |
-| **Temporal LPIPS** | Perceptual difference between consecutive frames | LPIPS(frame_t, frame_t+1) variance over video |
-| **Frechet Video Distance (FVD)** | Overall video quality including temporal aspects | I3D features, compare to reference distribution |
-| **Warping Error** | Whether optical flow accurately predicts next frame | Warp frame_t by flow, compare to frame_t+1 |
-| **CLIP-Temporal** | Semantic consistency across frames | CLIP embedding variance across frames |
-| **Motion Consistency Score (MCS)** | Whether motion follows physical laws | Optical flow trajectory analysis |
-| **Identity Preservation (DINO-track)** | Object appearance consistency | DINO features for tracked objects |
+The primary metric is **temporal_consistency**, computed as a weighted combination of:
+
+1. **Flow Smoothness (FS)** - Optical flow acceleration variance (lower = smoother)
+2. **Temporal LPIPS Variance** - Frame-to-frame perceptual consistency
+3. **Identity Preservation** - DINO feature consistency for tracked objects
+4. **Warping Error** - How well optical flow predicts next frame
+
+```python
+def temporal_consistency(video: torch.Tensor) -> float:
+    """
+    Compute temporal consistency score (0-1, higher is better).
+
+    Components:
+    - flow_smoothness: 1 - normalized_acceleration_variance
+    - temporal_lpips: 1 - normalized_lpips_variance
+    - identity_score: mean DINO feature correlation across frames
+    - warp_accuracy: 1 - normalized_warping_error
+    """
+    fs = 1.0 - min(flow_acceleration_variance(video) / MAX_ACCEL, 1.0)
+    tl = 1.0 - min(temporal_lpips_variance(video) / MAX_LPIPS_VAR, 1.0)
+    id_score = dino_identity_correlation(video)
+    warp = 1.0 - min(warping_error(video) / MAX_WARP, 1.0)
+
+    return 0.3 * fs + 0.25 * tl + 0.25 * id_score + 0.2 * warp
+```
 
 ---
 
-## 3. Experimental Setup
+## 4. Experimental Setup
 
-### 3.1 Hardware Requirements
+### 4.1 Hardware Requirements
 
 | Resource | Minimum | Recommended |
 |----------|---------|-------------|
-| GPU VRAM | 24GB (A10/3090) | 40GB+ (A100/A6000) |
-| System RAM | 32GB | 64GB |
-| Storage | 100GB (datasets + models) | 500GB (full experiments) |
-| Compute time | 2-3 days | 1 week |
+| GPU | 1x A100 40GB | 1x A100 80GB |
+| CPU RAM | 64GB | 128GB |
+| Storage | 200GB SSD | 500GB NVMe |
 
-**Note:** Full VLM + video decoder requires ~40GB VRAM. For initial experiments with smaller conditioning adapter, 24GB may suffice.
+**VRAM breakdown (inference):**
+- Qwen2.5-VL-7B (bf16): ~15GB
+- DINOv2-ViT-L (bf16): ~2GB
+- Fusion module: ~100MB
+- LTX-Video (bf16): ~8GB
+- RAFT optical flow: ~2GB
+- **Total: ~28GB minimum**
 
-### 3.2 Temporal Metrics Implementation
+### 4.2 Software Dependencies
 
-Create `src/metrics/temporal_coherence.py`:
+```bash
+# Core dependencies
+pip install torch>=2.1.0 torchvision torchaudio
+pip install transformers>=4.40.0 accelerate>=0.27.0
+pip install diffusers>=0.27.0
+pip install flash-attn --no-build-isolation
+pip install timm>=0.9.0  # DINOv2
 
-```python
-# Pseudo-code for core metrics
+# Temporal metrics
+pip install raft-stereo  # Optical flow
+pip install lpips
+pip install pytorch-fid  # For FVD computation
 
-class TemporalMetrics:
-    def __init__(self):
-        self.flow_model = RAFT()  # Optical flow
-        self.lpips = LPIPS()
-        self.i3d = InceptionI3D()  # For FVD
-        self.dino = DINOv2()
-
-    def flow_smoothness(self, video: Tensor) -> float:
-        """Measure variance in optical flow acceleration."""
-        flows = [self.flow_model(video[t], video[t+1])
-                 for t in range(len(video)-1)]
-        velocities = [flow.mean(dim=(1,2)) for flow in flows]
-        accelerations = [v2 - v1 for v1, v2 in zip(velocities[:-1], velocities[1:])]
-        return torch.stack(accelerations).var().item()
-
-    def temporal_lpips(self, video: Tensor) -> Tuple[float, float]:
-        """Mean and variance of consecutive frame LPIPS."""
-        scores = [self.lpips(video[t], video[t+1])
-                  for t in range(len(video)-1)]
-        return torch.stack(scores).mean(), torch.stack(scores).var()
-
-    def warping_error(self, video: Tensor) -> float:
-        """Error when warping frame by optical flow."""
-        errors = []
-        for t in range(len(video)-1):
-            flow = self.flow_model(video[t], video[t+1])
-            warped = warp(video[t], flow)
-            errors.append(F.l1_loss(warped, video[t+1]))
-        return torch.stack(errors).mean().item()
-
-    def fvd(self, generated: List[Tensor], reference: List[Tensor]) -> float:
-        """Frechet Video Distance using I3D features."""
-        gen_feats = [self.i3d(v) for v in generated]
-        ref_feats = [self.i3d(v) for v in reference]
-        return compute_frechet_distance(gen_feats, ref_feats)
-
-    def identity_preservation(self, video: Tensor,
-                               object_tracks: List[BBox]) -> float:
-        """DINO feature consistency for tracked objects."""
-        features_per_object = []
-        for obj_track in object_tracks:
-            obj_features = []
-            for t, bbox in enumerate(obj_track):
-                crop = video[t, :, bbox.y1:bbox.y2, bbox.x1:bbox.x2]
-                obj_features.append(self.dino(crop))
-            features_per_object.append(torch.stack(obj_features))
-
-        # Measure feature variance per object
-        variances = [f.var(dim=0).mean() for f in features_per_object]
-        return torch.tensor(variances).mean().item()
+# Utilities
+pip install wandb einops matplotlib seaborn opencv-python
 ```
 
-### 3.3 Test Scenarios
+### 4.3 Model Checkpoints
 
-We evaluate temporal coherence across three difficulty tiers:
+```bash
+# Existing models (from P2)
+huggingface-cli download Qwen/Qwen2.5-VL-7B-Instruct
+huggingface-cli download Lightricks/LTX-Video
 
-**Tier 1: Static Scenes**
-- Camera stationary, minimal object motion
-- Tests: flickering, color drift, background stability
-- Examples: Indoor room, landscape view, still life
+# P2 trained checkpoints (required)
+# - fusion_module_best.pt (from P2)
+# - dinov2_vitl14 (via torch.hub)
+
+# Temporal metrics models
+# - RAFT (optical flow) - download via torchvision
+```
+
+### 4.4 Test Datasets
+
+**Tier 1: Static Scenes (Flickering Detection)**
+- 50 static scene videos from DAVIS 2017 (minimal motion)
+- Purpose: Detect conditioning-induced flickering
 
 **Tier 2: Simple Motion**
-- Single object moving, predictable trajectory
-- Tests: motion smoothness, identity preservation, trajectory physics
-- Examples: Ball rolling, person walking, car driving straight
+- 100 clips from Something-Something v2 (single object motion)
+- Filter: "Moving X", "Pushing X", "Lifting X"
+- Purpose: Test motion smoothness and identity preservation
 
 **Tier 3: Complex Interactions**
-- Multiple objects, interactions, occlusions
-- Tests: causal consistency, collision physics, identity through occlusion
-- Examples: Pouring water, stacking blocks, two people passing
-
-### 3.4 Datasets
-
-| Dataset | Use Case | Temporal Challenge |
-|---------|----------|-------------------|
-| **DAVIS 2017** | Object tracking benchmark | Identity preservation through motion |
-| **Something-Something v2** | Object interactions | Causal temporal relationships |
-| **Kinetics-400** | Diverse motion | General motion quality |
-| **Custom static videos** | Flickering detection | Minimal motion baseline |
-| **Physics simulation renders** | Physics accuracy | Known ground-truth dynamics |
+- 50 clips from Something-Something v2 (multi-object)
+- Filter: "Pouring X into Y", "Putting X on Y"
+- Purpose: Test causal consistency and physics
 
 ---
 
-## 4. Experiments
+## 5. Sub-Experiments
 
-### E-Q3.1: Baseline LTX-Video Temporal Coherence
+### E-Q3.1: Baseline Temporal Coherence Measurement
 
-**Objective:** Establish baseline temporal quality of LTX-Video without our conditioning.
+**Objective:** Establish baseline temporal_consistency score for LTX-Video without our conditioning, then measure degradation with hybrid encoder conditioning.
 
-**Method:**
+**Protocol:**
+
+**Phase 1: Baseline (No Conditioning)**
 1. Generate 100 videos using LTX-Video with text prompts only
 2. Use prompts spanning all three difficulty tiers
-3. Compute all temporal metrics
-4. Human evaluation (n=20 raters, 5-point scale for smoothness)
+3. Compute temporal_consistency and component metrics
+4. Record as baseline ceiling performance
 
-**Prompts:**
-```
-# Tier 1 (Static)
-"A peaceful living room with sunlight streaming through windows"
-"A still life of fruit on a wooden table"
+**Phase 2: With Hybrid Encoder Conditioning**
+1. Run same prompts through hybrid encoder pipeline
+2. Generate videos with P2 fusion module conditioning
+3. Compute same metrics
+4. Compare to baseline
 
-# Tier 2 (Simple Motion)
-"A red ball rolling across a wooden floor"
-"A person walking down a hallway"
+**Implementation:**
 
-# Tier 3 (Complex)
-"A hand pouring water from a pitcher into a glass"
-"Two people shaking hands"
-```
-
-**Metrics recorded:**
-- Flow smoothness: mean, std across videos
-- Temporal LPIPS: mean, variance per video
-- FVD: against reference videos
-- Warping error: per-tier breakdown
-- Human smoothness rating: mean, confidence interval
-
-**Expected outcome:** Establish "ceiling" performance for temporal coherence.
-
-**Time estimate:** 1 day (generation + metrics + human eval setup)
-
----
-
-### E-Q3.2: With Conditioning - Static Scenes
-
-**Objective:** Test if our conditioning disrupts temporal coherence in the easiest case.
-
-**Method:**
-1. Select 20 static scene videos from validation set
-2. Encode with VLM, generate conditioning through adapter
-3. Generate videos using LTX-Video + our conditioning
-4. Compare to baseline (E-Q3.1) on same prompts
-
-**Experimental conditions:**
-| Condition | Description |
-|-----------|-------------|
-| A | Baseline (no conditioning) |
-| B | Conditioning strength = 0.25 |
-| C | Conditioning strength = 0.5 |
-| D | Conditioning strength = 1.0 |
-
-**Key metrics:**
-- Flickering score (high-frequency intensity variance)
-- Background stability (LPIPS of background regions)
-- Color drift (mean color shift over time)
-
-**Success criterion:** Condition D (full conditioning) shows <10% degradation vs baseline on flickering score.
-
-**Analysis:**
-- If flickering increases with conditioning strength → adapter introduces noise
-- If background becomes unstable → conditioning leaks spatial information
-- If color drifts → adapter has temporal inconsistency
-
-**Time estimate:** 1 day
-
----
-
-### E-Q3.3: With Conditioning - Simple Motion
-
-**Objective:** Test motion quality with single moving objects.
-
-**Method:**
-1. Use Something-Something v2 validation set (single-object actions)
-2. Filter for simple motion: "Moving X from left to right", "Pushing X"
-3. Generate conditioned predictions for 50 video clips
-4. Measure motion-specific temporal metrics
-
-**Test cases:**
-- Linear motion (pushing object across table)
-- Curved motion (rolling ball)
-- Vertical motion (lifting object)
-- Rotational motion (turning object)
-
-**Key metrics:**
-- Flow smoothness score
-- Trajectory linearity (for linear motion cases)
-- Identity preservation (DINO consistency of moving object)
-- Motion blur consistency
-
-**Comparison:**
-- Our conditioning vs baseline LTX-Video
-- Our conditioning vs ground truth video
-
-**Success criterion:**
-- Flow smoothness within 20% of baseline
-- Identity preservation (DINO variance) < 0.15
-
-**Time estimate:** 2 days
-
----
-
-### E-Q3.4: With Conditioning - Object Interactions
-
-**Objective:** Test the hardest case: multi-object interactions with causal relationships.
-
-**Method:**
-1. Use Something-Something v2 validation set (interactions)
-2. Select: "Pouring X into Y", "Putting X on Y", "X colliding with Y"
-3. Generate conditioned predictions for 50 clips
-4. Measure interaction-specific metrics
-
-**Test cases:**
-- Contact interactions (putting object on surface)
-- Transfer interactions (pouring liquid)
-- Collision interactions (objects hitting each other)
-- Occlusion interactions (object passing behind another)
-
-**Key metrics:**
-- Causal consistency score (effects follow causes)
-- Collision physics score (objects don't pass through each other)
-- Post-occlusion identity (object appears correctly after occlusion)
-
-**Causal consistency evaluation:**
 ```python
-def causal_consistency_score(video, event_frames):
+def e_q3_1_baseline_measurement(runner: ExperimentRunner) -> dict:
     """
-    Check if effects happen AFTER causes.
-    event_frames: dict mapping event_name -> frame_number
+    E-Q3.1: Baseline Temporal Coherence Measurement
+
+    Measures temporal consistency with and without conditioning.
     """
-    # Example: pour_start should precede liquid_appears
-    violations = 0
-    if event_frames['liquid_appears'] < event_frames['pour_start']:
-        violations += 1
-    # ... more causal checks
-    return 1.0 - (violations / total_checks)
+    from temporal_metrics import TemporalMetrics
+    from ltx_video import LTXVideoPipeline
+    from hybrid_encoder import HybridEncoderPipeline
+
+    metrics = TemporalMetrics()
+    ltx = LTXVideoPipeline()
+    hybrid = HybridEncoderPipeline()  # Uses P2 fusion module
+
+    # Test prompts (20 per tier)
+    prompts = {
+        'static': [...],  # 20 static scene prompts
+        'motion': [...],  # 20 simple motion prompts
+        'interaction': [...]  # 20 interaction prompts
+    }
+
+    results = {
+        'baseline': {'static': [], 'motion': [], 'interaction': []},
+        'conditioned': {'static': [], 'motion': [], 'interaction': []}
+    }
+
+    for tier, tier_prompts in prompts.items():
+        for prompt in tier_prompts:
+            # Baseline: text-only
+            video_baseline = ltx.generate(prompt)
+            tc_baseline = metrics.temporal_consistency(video_baseline)
+            results['baseline'][tier].append(tc_baseline)
+
+            # Conditioned: hybrid encoder
+            video_cond = hybrid.generate(prompt)
+            tc_cond = metrics.temporal_consistency(video_cond)
+            results['conditioned'][tier].append(tc_cond)
+
+    # Aggregate metrics
+    baseline_mean = np.mean([v for tier in results['baseline'].values() for v in tier])
+    conditioned_mean = np.mean([v for tier in results['conditioned'].values() for v in tier])
+    degradation = (baseline_mean - conditioned_mean) / baseline_mean
+
+    return {
+        'finding': f'Temporal consistency: baseline={baseline_mean:.3f}, conditioned={conditioned_mean:.3f}, degradation={degradation:.1%}',
+        'metrics': {
+            'temporal_consistency_baseline': baseline_mean,
+            'temporal_consistency_conditioned': conditioned_mean,
+            'degradation_percent': degradation * 100,
+            'flow_smoothness_baseline': ...,
+            'flow_smoothness_conditioned': ...,
+            'temporal_lpips_var_baseline': ...,
+            'temporal_lpips_var_conditioned': ...,
+            'identity_preservation_baseline': ...,
+            'identity_preservation_conditioned': ...,
+        },
+        'artifacts': [
+            'artifacts/baseline_vs_conditioned_comparison.png',
+            'artifacts/per_tier_breakdown.json',
+            'artifacts/sample_videos/'
+        ]
+    }
 ```
 
-**Success criterion:**
-- Causal consistency > 0.8
-- Physics violations < 15% of clips
-- Identity through occlusion correlation > 0.85
+**Metrics:**
 
-**Time estimate:** 3 days
+| Metric | Target | Acceptable | Failure |
+|--------|--------|------------|---------|
+| temporal_consistency (conditioned) | > 0.80 | > 0.70 | < 0.50 |
+| degradation vs baseline | < 10% | < 20% | > 30% |
+| flow_smoothness | > 0.85 | > 0.75 | < 0.60 |
+| temporal_lpips_variance | < 0.02 | < 0.03 | > 0.05 |
+| identity_preservation | > 0.85 | > 0.75 | < 0.60 |
 
----
-
-### E-Q3.5: Ablation - Conditioning Strength vs Coherence Tradeoff
-
-**Objective:** Find the optimal conditioning strength that balances semantic control with temporal coherence.
-
-**Method:**
-Systematically vary conditioning strength and measure both:
-- Semantic accuracy (does output match intended content?)
-- Temporal coherence (is motion smooth and consistent?)
-
-**Experimental design:**
-```
-Conditioning strengths: [0.0, 0.1, 0.25, 0.5, 0.75, 1.0]
-Videos per strength: 30
-Metrics: flow_smoothness, temporal_lpips, semantic_similarity
-```
-
-**Analysis:**
-```python
-# Expected tradeoff curve
-# semantic_accuracy ↑ as conditioning ↑
-# temporal_coherence ↓ as conditioning ↑
-# Goal: find elbow point
-
-def find_optimal_strength(results):
-    """
-    Find conditioning strength that maximizes combined score.
-    """
-    scores = []
-    for strength, metrics in results.items():
-        combined = (
-            metrics['semantic_accuracy'] * 0.6 +
-            metrics['temporal_coherence'] * 0.4
-        )
-        scores.append((strength, combined))
-    return max(scores, key=lambda x: x[1])[0]
-```
-
-**Ablation sub-experiments:**
-- E-Q3.5a: Vary conditioning injection layer (early/mid/late)
-- E-Q3.5b: Vary conditioning temporal spread (all frames vs keyframes)
-- E-Q3.5c: Conditioning interpolation (smooth transition vs sharp)
+**Analysis Questions:**
+- Does conditioning degrade temporal coherence uniformly or in specific scenarios?
+- Which component metric degrades most (flow, LPIPS, identity)?
+- Are there prompt types where conditioning helps temporal coherence?
 
 **Deliverables:**
-- Pareto frontier plot: semantic accuracy vs temporal coherence
-- Recommended conditioning strength per use case
-- Architectural insights on conditioning injection
+- Baseline vs conditioned comparison table
+- Per-tier breakdown (static/motion/interaction)
+- Sample video comparisons (10 best, 10 worst)
+- Component metric correlation analysis
 
-**Time estimate:** 3 days
-
----
-
-### E-Q3.6: Human Evaluation of Motion Smoothness
-
-**Objective:** Validate automated metrics with human perception of temporal quality.
-
-**Method:**
-1. Select 50 video pairs: (baseline, ours) matched by content
-2. Conduct A/B preference study
-3. Additional 5-point rating scale for specific attributes
-
-**Study design:**
-- Participants: 30 (mix of ML researchers and non-technical)
-- Platform: Custom web interface or Prolific
-- Compensation: Standard rate for 20-minute study
-
-**Questions:**
-1. "Which video has smoother motion?" (forced choice)
-2. "Rate the motion smoothness" (1-5 scale)
-3. "Rate the physical plausibility" (1-5 scale)
-4. "Does anything look wrong?" (free text)
-
-**Controls:**
-- Include baseline vs baseline comparisons (attention check)
-- Randomize left/right placement
-- Include known-bad examples (temporal glitches)
-
-**Analysis:**
-- Preference rate: % preferring ours vs baseline
-- Correlation: human ratings vs automated metrics
-- Failure mode identification: qualitative analysis of "wrong" responses
-
-**Success criterion:**
-- Preference rate > 40% (not significantly worse than baseline)
-- Correlation with automated metrics > 0.7
-
-**Time estimate:** 1 week (including participant recruitment)
+**Time Estimate:** 3 days
 
 ---
 
-## 5. Success Metrics
+### E-Q3.2: Conditioning Strength vs Coherence Tradeoff
 
-### Quantitative Thresholds
+**Objective:** Find the optimal conditioning strength that balances semantic control with temporal coherence, and test conditioning injection strategies.
 
-| Metric | Acceptable | Good | Excellent |
-|--------|------------|------|-----------|
-| Flow smoothness degradation | <25% vs baseline | <15% | <5% |
-| Temporal LPIPS variance | <0.05 | <0.03 | <0.02 |
-| FVD | <150 | <100 | <75 |
-| Warping error | <0.08 | <0.05 | <0.03 |
-| Identity preservation (DINO) | >0.7 | >0.8 | >0.9 |
-| Human preference rate | >35% | >45% | >50% |
-| Physics violations | <20% | <10% | <5% |
+**Protocol:**
 
-### Pass/Fail Criteria
+**Phase 1: Conditioning Strength Sweep**
+1. Vary conditioning strength: [0.0, 0.1, 0.25, 0.5, 0.75, 1.0]
+2. Generate 30 videos per strength setting
+3. Measure temporal_consistency AND semantic_accuracy
+4. Plot Pareto frontier
 
-**PASS:** All metrics in "Acceptable" range, human preference >40%
-**CONDITIONAL PASS:** Most metrics acceptable, clear path to improvement
-**FAIL:** Multiple metrics in unacceptable range, no clear mitigation
+**Phase 2: Injection Strategy Ablation**
+1. Test injection points: early (layers 1-7), mid (layers 8-14), late (layers 15-28)
+2. Test injection methods: cross-attention, addition, concatenation
+3. Test temporal spread: all frames, keyframes only, first frame only
+
+**Implementation:**
+
+```python
+def e_q3_2_conditioning_tradeoff(runner: ExperimentRunner) -> dict:
+    """
+    E-Q3.2: Conditioning Strength vs Coherence Tradeoff
+
+    Finds optimal conditioning parameters.
+    """
+    from temporal_metrics import TemporalMetrics
+    from semantic_metrics import SemanticAccuracy
+    from hybrid_encoder import HybridEncoderPipeline
+
+    metrics = TemporalMetrics()
+    semantic = SemanticAccuracy()  # CLIP similarity to prompt
+
+    # Phase 1: Strength sweep
+    strengths = [0.0, 0.1, 0.25, 0.5, 0.75, 1.0]
+    prompts = [...]  # 30 diverse prompts
+
+    strength_results = {}
+    for strength in strengths:
+        hybrid = HybridEncoderPipeline(conditioning_strength=strength)
+        tc_scores = []
+        sem_scores = []
+
+        for prompt in prompts:
+            video = hybrid.generate(prompt)
+            tc_scores.append(metrics.temporal_consistency(video))
+            sem_scores.append(semantic.score(video, prompt))
+
+        strength_results[strength] = {
+            'temporal_consistency': np.mean(tc_scores),
+            'semantic_accuracy': np.mean(sem_scores),
+            'combined_score': 0.5 * np.mean(tc_scores) + 0.5 * np.mean(sem_scores)
+        }
+
+    # Find optimal strength (maximize combined score while tc > 0.7)
+    valid_strengths = {s: r for s, r in strength_results.items()
+                       if r['temporal_consistency'] > 0.7}
+    optimal_strength = max(valid_strengths.keys(),
+                           key=lambda s: valid_strengths[s]['combined_score'])
+
+    # Phase 2: Injection strategy ablation (at optimal strength)
+    injection_results = {}
+    for injection_point in ['early', 'mid', 'late']:
+        for injection_method in ['cross_attention', 'addition']:
+            hybrid = HybridEncoderPipeline(
+                conditioning_strength=optimal_strength,
+                injection_point=injection_point,
+                injection_method=injection_method
+            )
+            # ... measure metrics
+
+    return {
+        'finding': f'Optimal conditioning strength: {optimal_strength}, achieves tc={strength_results[optimal_strength]["temporal_consistency"]:.3f}',
+        'metrics': {
+            'temporal_consistency': strength_results[optimal_strength]['temporal_consistency'],
+            'optimal_strength': optimal_strength,
+            'semantic_accuracy_at_optimal': strength_results[optimal_strength]['semantic_accuracy'],
+            'best_injection_point': ...,
+            'best_injection_method': ...,
+        },
+        'artifacts': [
+            'artifacts/pareto_frontier.png',
+            'artifacts/strength_sweep_results.json',
+            'artifacts/injection_ablation_results.json',
+            'artifacts/recommended_config.yaml'
+        ]
+    }
+```
+
+**Metrics:**
+
+| Metric | Target | Acceptable | Failure |
+|--------|--------|------------|---------|
+| temporal_consistency (at optimal) | > 0.80 | > 0.70 | < 0.50 |
+| semantic_accuracy (at optimal) | > 0.75 | > 0.65 | < 0.50 |
+| combined_score | > 0.75 | > 0.65 | < 0.55 |
+
+**Ablation Variables:**
+
+| Variable | Options | Purpose |
+|----------|---------|---------|
+| Conditioning strength | 0.0 - 1.0 | Control semantic influence |
+| Injection point | early/mid/late | Where to inject in DiT |
+| Injection method | cross_attn/addition | How to combine features |
+| Temporal spread | all/keyframes/first | Which frames to condition |
+
+**Analysis Questions:**
+- Is there a "sweet spot" where both temporal and semantic quality are high?
+- Does injection point matter more than strength?
+- Can keyframe-only conditioning preserve coherence better?
+
+**Deliverables:**
+- Pareto frontier plot (temporal vs semantic)
+- Recommended configuration for production
+- Ablation results table
+- Guidelines document for conditioning tuning
+
+**Time Estimate:** 4 days
 
 ---
 
-## 6. Failure Criteria
+## 6. Success Criteria
 
-The temporal coherence research is considered FAILED if:
+### 6.1 Primary Success Criteria (Gate 2)
 
-### Hard Failures (Abandon approach)
+| Metric | Target | Acceptable | Failure | Source |
+|--------|--------|------------|---------|--------|
+| **temporal_consistency** | > 0.80 | > 0.70 | < 0.50 | research_plan.yaml |
 
-1. **Catastrophic flickering** - Conditioning causes severe flickering (>3x baseline) that cannot be reduced by lowering conditioning strength
+### 6.2 Secondary Success Criteria
 
-2. **Fundamental incompatibility** - VLM latent structure fundamentally incompatible with LTX-Video's temporal modeling, requiring >100M parameter adapter to achieve baseline performance
+| Metric | Target | Notes |
+|--------|--------|-------|
+| Degradation vs baseline | < 10% | Conditioning shouldn't hurt much |
+| Flow smoothness | > 0.85 | No motion artifacts |
+| Identity preservation | > 0.85 | Objects stay consistent |
+| Semantic accuracy | > 0.70 | At optimal conditioning |
 
-3. **Physics violations at all strengths** - Even minimal conditioning (0.1) causes physics violations in >50% of interaction videos
+### 6.3 Comparison Baselines
 
-### Soft Failures (Pivot required)
+| Baseline | Source | Key Metrics |
+|----------|--------|-------------|
+| LTX-Video (text-only) | E-Q3.1 baseline | temporal_consistency ceiling |
+| P2 Hybrid Encoder | P2 results | lpips=0.162, spatial_iou=0.837 |
 
-1. **Unacceptable tradeoff curve** - Cannot achieve semantic accuracy >0.6 while maintaining temporal coherence >0.7
+### 6.4 Go/No-Go Decision Points
 
-2. **Human rejection** - Human preference rate <25% across all conditions
-
-3. **Metric divergence** - Automated metrics show "acceptable" but humans consistently rate videos as "bad"
+| Checkpoint | Timing | Criteria | Decision |
+|------------|--------|----------|----------|
+| E-Q3.1 Baseline | Day 3 | Baseline temporal_consistency > 0.85 | Continue / Debug LTX |
+| E-Q3.1 Conditioned | Day 3 | Conditioned temporal_consistency > 0.50 | Continue / Major issue |
+| E-Q3.2 Sweep | Day 5 | At least one strength achieves > 0.70 | Continue / Pivot |
+| E-Q3.2 Complete | Day 7 | Optimal config achieves > 0.70 | Pass Gate 2 / Investigate |
 
 ---
 
-## 7. Pivot Options
+## 7. Failure Criteria
 
-If temporal coherence experiments show unacceptable degradation:
+### 7.1 Hard Failures (Abandon Approach)
 
-### Pivot A: Reduce Conditioning Strength
+1. **Catastrophic temporal degradation:** Conditioned temporal_consistency < 0.50 at ALL conditioning strengths
+   - Implication: Fundamental incompatibility between hybrid encoder and LTX temporal modeling
+   - Action: Consider alternative video decoder or completely different conditioning approach
 
-**Strategy:** Use minimal conditioning (0.1-0.25) for temporal guidance only
-**Tradeoff:** Less semantic control, but preserves video decoder's learned priors
-**Implementation:** Scale adapter output before injection
+2. **No viable operating point:** Cannot achieve temporal_consistency > 0.70 AND semantic_accuracy > 0.60 simultaneously
+   - Implication: Tradeoff is too severe for practical use
+   - Action: Pivot to post-processing temporal smoothing or keyframe-only approach
+
+3. **Severe flickering at all settings:** Visual flickering makes videos unwatchable regardless of parameters
+   - Implication: Conditioning injection introduces irremovable noise
+   - Action: Redesign conditioning pathway
+
+### 7.2 Soft Failures (Investigation Required)
+
+1. **Marginal temporal coherence:** temporal_consistency = 0.60-0.70
+   - May need conditioning loss modification or injection refinement
+
+2. **Scene-type sensitivity:** Good coherence on static, poor on interactions
+   - May need scene-adaptive conditioning strength
+
+3. **Component metric imbalance:** Flow good but identity poor (or vice versa)
+   - May need targeted fixes for specific failure modes
+
+---
+
+## 8. Pivot Options
+
+If Q3 shows unacceptable temporal degradation:
+
+### Pivot A: Reduced Conditioning Strength
+**Strategy:** Use minimal conditioning (0.1-0.25) for semantic guidance only
+**Tradeoff:** Less semantic control, preserves video decoder's learned priors
+**Implementation:** Scale adapter output to 10-25%
 
 ### Pivot B: Temporal Smoothing Post-Processing
-
 **Strategy:** Apply temporal smoothing after generation
 **Options:**
 - Optical flow-based interpolation
 - Temporal Gaussian filtering in latent space
 - Frame blending
-
 **Tradeoff:** May blur details, adds latency
-**Implementation:**
-```python
-def temporal_smooth(video, sigma=1.0):
-    """Apply temporal Gaussian filter."""
-    kernel = gaussian_kernel_1d(sigma)
-    return F.conv1d(video.permute(0,2,3,1), kernel)
-```
 
 ### Pivot C: Keyframe-Only Conditioning
-
 **Strategy:** Condition only on keyframes (every 8th frame), let video decoder interpolate
-**Tradeoff:** Less frame-level control, but preserves inter-frame coherence
-**Implementation:** Sparse conditioning mask
+**Tradeoff:** Less frame-level control, preserves inter-frame coherence
+**Implementation:** Sparse conditioning mask in temporal dimension
 
-### Pivot D: Temporal Consistency Loss
-
-**Strategy:** Add explicit temporal consistency loss during adapter training
+### Pivot D: Temporal Consistency Training Loss
+**Strategy:** Retrain adapter with explicit temporal consistency loss
 **Loss function:**
 ```python
 def temporal_consistency_loss(generated_video):
-    """Penalize temporal discontinuities."""
     flow_loss = flow_smoothness_penalty(generated_video)
     lpips_loss = consecutive_frame_lpips(generated_video)
     return flow_loss + 0.5 * lpips_loss
 ```
-**Tradeoff:** Requires adapter retraining, may reduce semantic fidelity
+**Tradeoff:** Requires adapter retraining, longer experiment
 
 ### Pivot E: Alternative Video Decoder
-
 **Strategy:** Switch to video decoder with stronger temporal priors
 **Options:**
 - CogVideoX (slower but potentially more robust)
-- Custom fine-tuned LTX-Video with temporal consistency emphasis
 - HunyuanVideo-1.5 (higher quality, 75s/clip)
-
-**Tradeoff:** Slower inference, different conditioning interface
+**Tradeoff:** Different conditioning interface, higher latency
 
 ---
 
-## 8. Timeline
+## 9. Timeline
 
 | Day | Experiment | Deliverables |
 |-----|------------|--------------|
-| 1 | E-Q3.1 Baseline measurement | Baseline metrics, human eval setup |
-| 2 | E-Q3.2 Static scenes | Static scene coherence report |
-| 3-4 | E-Q3.3 Simple motion | Motion quality analysis |
-| 5-7 | E-Q3.4 Object interactions | Interaction coherence report |
-| 8-10 | E-Q3.5 Conditioning ablation | Optimal strength recommendation |
-| 11-14 | E-Q3.6 Human evaluation | Human preference study results |
-| 15-16 | Analysis & writeup | Final temporal coherence report |
+| 1 | Setup, metrics implementation | Temporal metrics working |
+| 2-3 | E-Q3.1: Baseline + conditioned | Baseline comparison |
+| 4-5 | E-Q3.2: Strength sweep | Pareto frontier |
+| 6-7 | E-Q3.2: Injection ablation | Optimal config |
+| 8 | Analysis + writeup | Final report |
 
-**Total estimated time:** 2-3 weeks
+**Total Estimated Time:** 8 days
 
-**Critical path:** E-Q3.1 → E-Q3.2 → E-Q3.3 → E-Q3.4 (sequential, builds complexity)
+**Critical Path:** Setup -> E-Q3.1 -> E-Q3.2 (sequential dependency)
 
-**Parallelizable:** E-Q3.5 can partially overlap with E-Q3.4; E-Q3.6 can start once E-Q3.3 completes
+**Parallelization:** Phase 2 of E-Q3.2 can overlap with Phase 1 analysis
 
 ---
 
-## 9. Dependencies
+## 10. Resource Requirements
 
-### Required Before Starting
+### 10.1 Compute
 
-1. **Working conditioning adapter (C2)** - Must have trained adapter that can inject VLM latents into LTX-Video
-2. **LTX-Video inference working** - Baseline generation must be functional
-3. **Optical flow model (RAFT)** - For flow-based metrics
-4. **LPIPS model** - For perceptual similarity
-5. **I3D model** - For FVD computation
-6. **DINOv2 model** - For identity tracking
+| Phase | GPU Type | GPU-Hours | Notes |
+|-------|----------|-----------|-------|
+| Setup | A100-40GB | 5 | Metrics validation |
+| E-Q3.1 Baseline | A100-40GB | 30 | 100 videos, ~18min each |
+| E-Q3.1 Conditioned | A100-40GB | 30 | 100 videos with hybrid |
+| E-Q3.2 Sweep | A100-40GB | 50 | 6 strengths x 30 videos |
+| E-Q3.2 Ablation | A100-40GB | 40 | Injection point variations |
+| **Total** | | **155** | |
 
-### Software Dependencies
+**Estimated Cost:** ~$310 (at $2/GPU-hour)
 
-```python
-# requirements-temporal.txt
-torch>=2.0
-diffusers>=0.25
-transformers>=4.36
-opencv-python  # Video I/O
-raft-stereo    # Optical flow
-lpips
-pytorch-fid    # For FVD computation
-timm           # For I3D/DINO models
-```
+### 10.2 Storage
 
-### Data Dependencies
-
-- Something-Something v2 validation set (or subset)
-- DAVIS 2017 validation set
-- Custom static scene test videos (to be created)
+| Item | Size | Notes |
+|------|------|-------|
+| Generated videos | ~50GB | 500 videos @ ~100MB each |
+| Metrics cache | ~5GB | Pre-computed features |
+| Checkpoints | ~200MB | P2 fusion module |
+| Results/artifacts | ~2GB | Plots, JSON, samples |
+| **Total** | ~58GB | |
 
 ---
 
-## 10. Deliverables
+## 11. Dependencies
 
-### Primary Deliverables
+### 11.1 Prerequisites (Must Complete Before Starting)
 
-1. **Temporal Coherence Benchmark**
-   - Curated test set (150 videos across 3 difficulty tiers)
-   - Automated evaluation pipeline
-   - Baseline scores for LTX-Video
-   - Scores for our method at various conditioning strengths
+- [x] P2 Hybrid Encoder passed (spatial_iou=0.837, lpips=0.162)
+- [x] P2 fusion module checkpoint available
+- [x] LTX-Video inference working
+- [ ] RAFT optical flow model downloaded
+- [ ] LPIPS model loaded
+- [ ] DINO model for identity tracking
 
-2. **Conditioning Guidelines Document**
-   - Recommended conditioning strength per use case
-   - Architectural recommendations (injection point, temporal spread)
-   - Known failure modes and mitigations
+### 11.2 Blocks
 
-3. **Metrics Implementation**
-   - `src/metrics/temporal_coherence.py` - All temporal metrics
-   - `scripts/evaluate_temporal.py` - Evaluation script
-   - Unit tests with known-good/bad video examples
+This experiment blocks:
+- **C3 (Future Prediction):** Needs temporally coherent video generation
+- **Gate 2:** Cannot pass without Q3 completing
 
-### Secondary Deliverables
+### 11.3 External Dependencies
 
-4. **Human Evaluation Protocol**
-   - Study design document
-   - Web interface code
-   - Analysis scripts
-   - Raw and processed human ratings
-
-5. **Ablation Study Results**
-   - Pareto frontier visualization
-   - Conditioning strength sweep data
-   - Injection point comparison
-
-6. **Failure Mode Catalog**
-   - Video examples of each failure mode
-   - Automatic detection heuristics
-   - Mitigation strategies per failure type
-
-### Documentation
-
-7. **Technical Report**
-   - Full methodology description
-   - Results with statistical analysis
-   - Comparison to prior work
-   - Limitations and future work
+- RAFT model availability (via torchvision or hub)
+- Something-Something v2 validation set
+- DAVIS 2017 dataset (optional, for static scenes)
 
 ---
 
-## Appendix A: Detailed Metric Definitions
+## 12. Risks and Mitigations
+
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Conditioning causes severe flickering | Medium (30%) | High | Test multiple injection points, fall back to keyframes |
+| No viable semantic-temporal tradeoff | Low (15%) | High | Accept lower semantic accuracy, focus on temporal |
+| Metrics don't correlate with perception | Medium (25%) | Medium | Add human evaluation spot-checks |
+| LTX-Video baseline is poor | Low (10%) | High | Debug video decoder first, consider alternatives |
+| Compute budget insufficient | Low (10%) | Medium | Prioritize strength sweep, defer ablations |
+
+---
+
+## 13. Deliverables
+
+### 13.1 Code Artifacts
+
+| Artifact | Location | Description |
+|----------|----------|-------------|
+| Temporal metrics | `infra/modal/handlers/q3/temporal_metrics.py` | Flow, LPIPS, identity metrics |
+| E-Q3.1 handler | `infra/modal/handlers/q3/e_q3_1.py` | Baseline measurement |
+| E-Q3.2 handler | `infra/modal/handlers/q3/e_q3_2.py` | Strength/injection ablation |
+| Evaluation script | `scripts/evaluate_temporal.py` | Standalone evaluation |
+
+### 13.2 Checkpoints
+
+| Checkpoint | Size | Description |
+|------------|------|-------------|
+| P2 fusion module | ~100MB | Required input from P2 |
+| Metrics cache | ~500MB | Pre-computed RAFT/DINO features |
+
+### 13.3 Reports
+
+| Report | Format | Audience |
+|--------|--------|----------|
+| Technical findings | `research/experiments/q3-temporal-coherence/FINDINGS.md` | Research team |
+| Results data | `research/experiments/q3-temporal-coherence/results.yaml` | Validation system |
+| Conditioning guidelines | `research/experiments/q3-temporal-coherence/CONDITIONING_GUIDE.md` | Implementation |
+
+### 13.4 Decision Document
+
+Final assessment with:
+- Gate 2 pass/fail determination (Q3 component)
+- Recommended conditioning configuration
+- Known failure modes and mitigations
+- Implications for C3 (Future Prediction)
+
+---
+
+## 14. Open Questions
+
+To be resolved during experiments:
+
+1. **Baseline quality:** What is LTX-Video's baseline temporal_consistency? (Need to establish ceiling)
+2. **Injection point impact:** Does early vs late injection affect temporal coherence differently?
+3. **Scene-type sensitivity:** Do static scenes behave differently than motion scenes?
+4. **Metric correlation:** Do automated metrics correlate with human perception of temporal quality?
+5. **Semantic-temporal coupling:** Is there a principled way to decouple semantic control from temporal coherence?
+
+---
+
+## 15. Related Documents
+
+- [P2 Hybrid Encoder Results](./p2-hybrid-encoder.md) - Foundation for Q3
+- [C2 Adapter Bridging Plan](./c2-adapter-bridging.md) - Parallel Gate 2 experiment
+- [Agent Guide](../AGENT_GUIDE.md) - How to run experiments
+- [Research Plan](../research_plan.yaml) - Success criteria source
+
+---
+
+## Appendix A: Temporal Metrics Implementation
 
 ### A.1 Flow Smoothness Score
 
@@ -644,82 +678,112 @@ def flow_smoothness_score(video: torch.Tensor) -> float:
     """
     Measure temporal smoothness via optical flow acceleration.
 
-    Lower score = smoother motion
+    Lower acceleration variance = smoother motion.
+    Returns score 0-1 (higher = smoother).
 
     Args:
         video: (T, C, H, W) tensor
 
     Returns:
-        Smoothness score (0-1, lower is smoother)
+        Smoothness score normalized to [0, 1]
     """
     T = video.shape[0]
 
-    # Compute optical flow for consecutive frames
+    # Compute optical flow for consecutive frames using RAFT
     flows = []
     for t in range(T - 1):
         flow = compute_optical_flow(video[t], video[t + 1])  # (2, H, W)
         flows.append(flow)
 
-    # Compute flow differences (velocity)
+    # Compute velocity (flow difference)
     velocities = [flows[t + 1] - flows[t] for t in range(len(flows) - 1)]
 
-    # Compute acceleration (change in velocity)
+    # Compute acceleration (velocity difference)
     accelerations = [velocities[t + 1] - velocities[t]
                      for t in range(len(velocities) - 1)]
 
-    # Score = mean magnitude of acceleration
+    # Score = normalized acceleration magnitude
     acc_magnitudes = [torch.norm(a, dim=0).mean() for a in accelerations]
+    mean_acc = torch.stack(acc_magnitudes).mean().item()
 
-    return torch.stack(acc_magnitudes).mean().item()
+    # Normalize: MAX_ACCEL empirically set to 5.0 for typical videos
+    MAX_ACCEL = 5.0
+    return max(0, 1.0 - mean_acc / MAX_ACCEL)
 ```
 
-### A.2 Frechet Video Distance
+### A.2 Temporal LPIPS Variance
 
 ```python
-def compute_fvd(generated_videos: List[torch.Tensor],
-                 reference_videos: List[torch.Tensor],
-                 i3d_model: nn.Module) -> float:
+def temporal_lpips_variance(video: torch.Tensor) -> float:
     """
-    Compute Frechet Video Distance using I3D features.
+    Measure variance of LPIPS between consecutive frames.
 
-    Args:
-        generated_videos: List of (T, C, H, W) tensors
-        reference_videos: List of (T, C, H, W) tensors
-        i3d_model: Pretrained I3D model
-
-    Returns:
-        FVD score (lower is better)
+    High variance = inconsistent frame-to-frame appearance.
+    Returns variance (lower = more consistent).
     """
-    # Extract I3D features
-    gen_features = []
-    ref_features = []
+    lpips_model = LPIPS(net='alex')
 
-    for video in generated_videos:
-        # I3D expects (B, C, T, H, W)
-        video = video.permute(1, 0, 2, 3).unsqueeze(0)
-        features = i3d_model(video)  # (1, feature_dim)
-        gen_features.append(features.squeeze())
+    scores = []
+    for t in range(len(video) - 1):
+        score = lpips_model(video[t:t+1], video[t+1:t+2])
+        scores.append(score.item())
 
-    for video in reference_videos:
-        video = video.permute(1, 0, 2, 3).unsqueeze(0)
-        features = i3d_model(video)
-        ref_features.append(features.squeeze())
+    return np.var(scores)
+```
 
-    gen_features = torch.stack(gen_features)  # (N_gen, feature_dim)
-    ref_features = torch.stack(ref_features)  # (N_ref, feature_dim)
+### A.3 Identity Preservation Score
 
-    # Compute statistics
-    mu_gen, sigma_gen = gen_features.mean(0), torch_cov(gen_features)
-    mu_ref, sigma_ref = ref_features.mean(0), torch_cov(ref_features)
+```python
+def identity_preservation_score(video: torch.Tensor) -> float:
+    """
+    Measure object appearance consistency using DINO features.
 
-    # Frechet distance
-    diff = mu_gen - mu_ref
-    covmean = sqrtm(sigma_gen @ sigma_ref)
+    High correlation = consistent object appearance.
+    Returns mean pairwise correlation (higher = better).
+    """
+    dino = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
 
-    fvd = (diff @ diff +
-           torch.trace(sigma_gen + sigma_ref - 2 * covmean))
+    features = []
+    for t in range(len(video)):
+        feat = dino(video[t:t+1])  # (1, D)
+        features.append(feat.squeeze())
 
-    return fvd.item()
+    features = torch.stack(features)  # (T, D)
+
+    # Compute pairwise correlations
+    correlations = []
+    for t in range(len(features) - 1):
+        corr = F.cosine_similarity(features[t:t+1], features[t+1:t+2])
+        correlations.append(corr.item())
+
+    return np.mean(correlations)
+```
+
+### A.4 Combined Temporal Consistency
+
+```python
+def temporal_consistency(video: torch.Tensor) -> float:
+    """
+    Combined temporal consistency score.
+
+    Weighted combination of:
+    - Flow smoothness (30%)
+    - Temporal LPIPS variance (25%)
+    - Identity preservation (25%)
+    - Warping accuracy (20%)
+
+    Returns score 0-1 (higher = better temporal consistency).
+    """
+    # Normalization constants (empirically determined)
+    MAX_LPIPS_VAR = 0.05
+    MAX_WARP_ERROR = 0.15
+
+    fs = flow_smoothness_score(video)
+    tl = 1.0 - min(temporal_lpips_variance(video) / MAX_LPIPS_VAR, 1.0)
+    id_score = identity_preservation_score(video)
+    warp = 1.0 - min(warping_error(video) / MAX_WARP_ERROR, 1.0)
+
+    return 0.30 * fs + 0.25 * tl + 0.25 * id_score + 0.20 * warp
 ```
 
 ---
@@ -730,16 +794,11 @@ def compute_fvd(generated_videos: List[torch.Tensor],
 
 ```yaml
 static_prompts:
-  - "A cozy living room with a fireplace, no people or pets"
+  - "A cozy living room with a fireplace, no movement"
   - "A still mountain lake reflecting snow-capped peaks"
   - "A bowl of fresh fruit on a kitchen counter"
   - "An empty classroom with rows of desks"
-  - "A garden with flowers, no wind"
-  - "A bookshelf filled with colorful books"
-  - "A parking lot with parked cars, no movement"
-  - "An office desk with computer and lamp"
-  - "A bathroom with marble countertops"
-  - "A beach at sunset with calm water"
+  - "A garden with flowers on a windless day"
 ```
 
 ### Simple Motion (Tier 2)
@@ -750,12 +809,7 @@ motion_prompts:
   - "A person walking forward down a hallway"
   - "A car driving straight on an empty road"
   - "A bird flying across a clear sky"
-  - "A balloon floating upward"
-  - "A toy train moving on circular tracks"
-  - "A leaf falling from a tree"
   - "A pendulum swinging back and forth"
-  - "A person waving their hand"
-  - "A dog running across a field"
 ```
 
 ### Complex Interactions (Tier 3)
@@ -765,68 +819,15 @@ interaction_prompts:
   - "A hand pouring water from a pitcher into a glass"
   - "A person stacking wooden blocks"
   - "Two billiard balls colliding on a table"
-  - "A cat jumping onto a table and knocking over a cup"
-  - "A person opening a door and walking through"
+  - "A cat jumping onto a table"
   - "Dominoes falling in a chain reaction"
-  - "A hand placing a book on top of a stack"
-  - "Two people shaking hands"
-  - "A ball bouncing and coming to rest"
-  - "A spoon stirring liquid in a cup"
 ```
 
 ---
 
-## Appendix C: Human Evaluation Interface
+## Appendix C: Revision History
 
-### Study Protocol
-
-1. **Introduction** (2 min)
-   - Explain task: "You will compare video pairs for motion quality"
-   - Define criteria: smoothness, physical plausibility, naturalness
-   - Practice round with example pairs
-
-2. **Main Evaluation** (15 min)
-   - 50 video pair comparisons
-   - Each pair shown for 5 seconds, looped
-   - Questions after each pair
-
-3. **Debrief** (3 min)
-   - Free-form feedback
-   - Demographics (optional)
-
-### Interface Mockup
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Video Quality Study                       │
-│                                                              │
-│  ┌─────────────────┐       ┌─────────────────┐              │
-│  │                 │       │                 │              │
-│  │    Video A      │       │    Video B      │              │
-│  │                 │       │                 │              │
-│  └─────────────────┘       └─────────────────┘              │
-│                                                              │
-│  Which video has smoother, more natural motion?              │
-│                                                              │
-│  ○ Video A          ○ Video B          ○ About the same     │
-│                                                              │
-│  Rate the smoothness of Video A: [1] [2] [3] [4] [5]        │
-│  Rate the smoothness of Video B: [1] [2] [3] [4] [5]        │
-│                                                              │
-│  Notice anything wrong? [____________________________]       │
-│                                                              │
-│                         [Next Pair]                          │
-│                                                              │
-│  Progress: ████████░░░░░░░░░░░░ 17/50                       │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## References
-
-1. HaCohen et al. (2024). LTX-Video: Realtime Video Latent Diffusion. arXiv:2501.00103
-2. Unterthiner et al. (2018). Towards Accurate Generative Models of Video: A New Metric & Challenges. arXiv:1812.01717 (FVD)
-3. Teed & Deng (2020). RAFT: Recurrent All-Pairs Field Transforms for Optical Flow. ECCV.
-4. Zhang et al. (2018). The Unreasonable Effectiveness of Deep Features as a Perceptual Metric. CVPR. (LPIPS)
-5. Goyal et al. (2017). The "Something Something" Video Database. ICCV.
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 0.1 | 2026-01-18 | Claude | Initial draft |
+| 0.2 | 2026-01-20 | Claude | Updated to align with research_plan.yaml, P2 results, and 2-sub-experiment structure |

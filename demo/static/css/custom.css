@@ -1,0 +1,170 @@
+/*
+ * Foresight Demo - Custom Styles
+ *
+ * These styles extend the default Gradio theme.
+ */
+
+/* Layout */
+.thoughts-panel {
+    border-left: 1px solid var(--border-color-primary);
+    padding-left: 16px;
+}
+
+/* Prediction Video */
+.prediction-video {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.prediction-video video {
+    border-radius: 8px;
+}
+
+/* Metrics */
+.metrics-badge {
+    font-size: 0.85em;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--background-fill-secondary);
+    font-family: monospace;
+}
+
+.metrics-row {
+    gap: 8px;
+}
+
+/* Timeline */
+.timeline-container {
+    overflow-x: auto;
+    padding: 8px 0;
+}
+
+.timeline-frame {
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.timeline-frame:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.timeline-frame.selected {
+    border: 2px solid var(--primary-500);
+}
+
+/* Comparison View */
+.comparison-container {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.comparison-image {
+    flex: 1;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.comparison-label {
+    font-size: 0.85em;
+    color: var(--body-text-color-subdued);
+    text-align: center;
+    margin-top: 4px;
+}
+
+/* Status Indicators */
+.status-ready {
+    color: var(--success-text-color);
+}
+
+.status-processing {
+    color: var(--warning-text-color);
+}
+
+.status-error {
+    color: var(--error-text-color);
+}
+
+/* Loading States */
+.loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border-color-primary);
+    border-top-color: var(--primary-500);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Chat Enhancements */
+.chat-message-user {
+    background: var(--primary-50);
+}
+
+.chat-message-assistant {
+    background: var(--background-fill-primary);
+}
+
+.chat-image-thumbnail {
+    max-width: 200px;
+    border-radius: 8px;
+    margin-top: 8px;
+}
+
+/* Header */
+.header-title {
+    font-weight: 600;
+    color: var(--body-text-color);
+}
+
+.header-description {
+    font-size: 0.9em;
+    color: var(--body-text-color-subdued);
+    font-style: italic;
+}
+
+/* Settings Panel */
+.settings-panel {
+    padding: 16px;
+    background: var(--background-fill-secondary);
+    border-radius: 8px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1200px) {
+    .thoughts-panel {
+        border-left: none;
+        border-top: 1px solid var(--border-color-primary);
+        padding-left: 0;
+        padding-top: 16px;
+    }
+}
+
+@media (max-width: 768px) {
+    .comparison-container {
+        flex-direction: column;
+    }
+
+    .timeline-frame {
+        min-width: 80px;
+    }
+}
+
+/* Dark Mode Overrides */
+.dark .prediction-video {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dark .timeline-frame:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}

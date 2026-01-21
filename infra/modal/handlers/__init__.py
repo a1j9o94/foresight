@@ -54,5 +54,9 @@ def get_handlers_for_experiment(experiment_id: str) -> dict[str, Callable]:
         from .q5 import get_handlers
 
         return get_handlers()
+    elif prefix == "p2":
+        from .p2 import get_handlers
+
+        return get_handlers()
     else:
         return {}
