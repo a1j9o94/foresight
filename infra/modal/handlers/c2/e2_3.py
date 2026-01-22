@@ -165,7 +165,7 @@ class SSIMLoss(nn.Module):
         return window
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        window = self.window.to(pred.device)
+        window = self.window.to(pred.device).to(pred.dtype)
         C1 = 0.01 ** 2
         C2 = 0.03 ** 2
 

@@ -27,6 +27,7 @@ from typing import Callable
 
 from .e_q3_1 import run as e_q3_1_baseline_measurement
 from .e_q3_2 import run as e_q3_2_conditioning_tradeoff
+from .e_q3_3 import run as e_q3_3_keyframe_pivot
 
 
 def get_handlers() -> dict[str, Callable]:
@@ -40,4 +41,6 @@ def get_handlers() -> dict[str, Callable]:
         "e_q3_1": e_q3_1_baseline_measurement,
         # Conditioning strength tradeoff
         "e_q3_2": e_q3_2_conditioning_tradeoff,
+        # Keyframe-only conditioning pivot
+        "e_q3_3": e_q3_3_keyframe_pivot,
     }
