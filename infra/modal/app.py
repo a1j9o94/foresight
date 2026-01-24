@@ -22,7 +22,7 @@ app = modal.App("foresight")
 # GPU image with all dependencies
 gpu_image = (
     modal.Image.debian_slim(python_version="3.11")
-    .apt_install("libgl1-mesa-glx", "libglib2.0-0")  # Required for cv2
+    .apt_install("libgl1-mesa-glx", "libglib2.0-0", "ffmpeg")  # Required for cv2 and video processing
     .pip_install(
         # Core ML
         "torch>=2.0.0",
@@ -44,6 +44,9 @@ gpu_image = (
         "seaborn",
         "scikit-learn",
         "opencv-python-headless",  # For edge detection in Q2.5
+        # Video loading for SSv2
+        "decord",  # Fast video decoding
+        "av",  # PyAV for video processing
         # Flash attention (optional, for speed)
         # "flash-attn",  # Uncomment if needed, requires specific CUDA version
     )
@@ -61,6 +64,11 @@ gpu_image = (
     .add_local_dir(
         Path(__file__).parent / "handlers",
         remote_path="/root/handlers",
+    )
+    # Add the training package for data loaders (SSv2, COIN, etc.)
+    .add_local_dir(
+        Path(__file__).parent.parent.parent / "packages" / "training" / "src" / "foresight_training",
+        remote_path="/root/foresight_training",
     )
     # Add research_plan.yaml for experiment configuration
     .add_local_file(
@@ -367,34 +375,79 @@ def download_datasets():
     # =========================================================================
     print("\n[2/2] Downloading Something-Something v2 subset...")
 
-    ssv2_dir = datasets_dir / "something-something-v2"
+    ssv2_dir = datasets_dir / "ssv2"
     ssv2_dir.mkdir(exist_ok=True)
+    videos_dir = ssv2_dir / "videos"
+    videos_dir.mkdir(exist_ok=True)
 
-    # NOTE: Something-Something v2 requires agreeing to terms
-    # For now, create a placeholder and instructions
+    # Try to download from HuggingFace (requires login + terms agreement)
+    ssv2_success = False
+    try:
+        from datasets import load_dataset
+        import os
+
+        # Check if HF token is available
+        hf_token = os.environ.get("HF_TOKEN")
+        if hf_token:
+            print("  Attempting HuggingFace download (with token)...")
+            # Download a small validation subset
+            ds = load_dataset(
+                "HuggingFaceM4/something-something-v2",
+                split="validation[:5000]",
+                token=hf_token,
+            )
+            print(f"  Downloaded {len(ds)} samples from HuggingFace")
+
+            # Save videos to disk
+            for i, sample in enumerate(ds):
+                video_id = sample.get("video_id", sample.get("id", i))
+                # The dataset should have video bytes
+                video_data = sample.get("video")
+                if video_data:
+                    video_path = videos_dir / f"{video_id}.mp4"
+                    with open(video_path, "wb") as f:
+                        f.write(video_data["bytes"] if isinstance(video_data, dict) else video_data)
+
+                if (i + 1) % 500 == 0:
+                    print(f"    Saved {i + 1}/{len(ds)} videos")
+
+            ssv2_success = True
+            print(f"  SSv2 videos saved to {videos_dir}")
+        else:
+            print("  No HF_TOKEN found, skipping HuggingFace download")
+
+    except Exception as e:
+        print(f"  HuggingFace download failed: {e}")
+
+    # Create instructions file regardless
     readme = ssv2_dir / "README.md"
     readme.write_text(
-        """# Something-Something v2 Dataset
+        f"""# Something-Something v2 Dataset
 
-This dataset requires manual download due to licensing.
+Status: {"Downloaded successfully" if ssv2_success else "Manual download required"}
 
-## Steps:
+## If manual download needed:
+
+### Option 1: Qualcomm direct download
 1. Go to https://developer.qualcomm.com/software/ai-datasets/something-something
 2. Agree to terms and download
-3. Upload to this directory using Modal volume commands
+3. Upload to {videos_dir} using Modal volume commands:
+   ```bash
+   modal volume put foresight-datasets /local/path/to/videos ./ssv2/videos/
+   ```
 
-## Alternative: Use Hugging Face
-```python
-from datasets import load_dataset
-dataset = load_dataset("HuggingFaceM4/something-something-v2", split="validation[:1000]")
-```
+### Option 2: HuggingFace (requires login)
+1. Get a HuggingFace token from https://huggingface.co/settings/tokens
+2. Accept terms at https://huggingface.co/datasets/HuggingFaceM4/something-something-v2
+3. Add HF_TOKEN to Modal secrets
+4. Re-run download_datasets
 
-Note: This also requires agreeing to terms at:
-https://huggingface.co/datasets/HuggingFaceM4/something-something-v2
+## Using the dataset
+The experiment handlers automatically look for videos at:
+/datasets/ssv2/videos/
 """
     )
-    print(f"  Created instructions at {readme}")
-    print("  NOTE: SSv2 requires manual download - see README")
+    print(f"  Instructions written to {readme}")
 
     # Commit changes
     datasets_volume.commit()

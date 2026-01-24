@@ -146,8 +146,8 @@ def load_ssv2_data(
     try:
         from foresight_training.data import SSv2Dataset
 
-        # Check if SSv2 videos are available
-        video_dir = os.environ.get("SSV2_VIDEO_DIR", "/data/ssv2/videos")
+        # Check if SSv2 videos are available (Modal volume path)
+        video_dir = os.environ.get("SSV2_VIDEO_DIR", "/datasets/ssv2/videos")
         if not os.path.exists(video_dir):
             print(f"  SSv2 video directory not found: {video_dir}")
             print("  Falling back to synthetic data")
@@ -476,8 +476,10 @@ def e3_2_single_frame_prediction(runner: ExperimentRunner) -> dict:
     # =========================================================================
     print("\n[Stage 1/5] Loading video data...")
 
-    n_videos = 100
+    n_videos = int(os.environ.get("E3_2_N_VIDEOS", "100"))
     mock_mode = os.environ.get("FORESIGHT_STUB_MODE", "false").lower() == "true"
+
+    print(f"  Requesting {n_videos} videos (mock_mode={mock_mode})")
 
     videos = load_ssv2_data(
         subset_size=n_videos,
@@ -564,17 +566,39 @@ def e3_2_single_frame_prediction(runner: ExperimentRunner) -> dict:
     val_target_t = val_target.to(device)
     val_copy_t = val_copy.to(device)
 
-    n_steps = 5000
-    batch_size = 8
-    lr = 1e-4
+    # Configurable training parameters
+    n_steps = int(os.environ.get("E3_2_STEPS", "5000"))
+    batch_size = int(os.environ.get("E3_2_BATCH_SIZE", "8"))
+    lr = float(os.environ.get("E3_2_LR", "1e-4"))
+    checkpoint_interval = int(os.environ.get("E3_2_CHECKPOINT_INTERVAL", "5000"))
+    checkpoint_dir = os.environ.get("CHECKPOINT_DIR", "/results/checkpoints/e3_2")
+
+    print(f"  Training for {n_steps} steps, checkpoints every {checkpoint_interval}")
+
+    # Create checkpoint directory
+    os.makedirs(checkpoint_dir, exist_ok=True)
 
     optimizer = torch.optim.AdamW(query_model.parameters(), lr=lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, n_steps, eta_min=1e-6)
 
+    # Try to resume from latest checkpoint
+    start_step = 0
+    checkpoint_files = sorted([f for f in os.listdir(checkpoint_dir) if f.endswith('.pt')]) if os.path.exists(checkpoint_dir) else []
+    if checkpoint_files:
+        latest = os.path.join(checkpoint_dir, checkpoint_files[-1])
+        print(f"  Resuming from checkpoint: {latest}")
+        ckpt = torch.load(latest, map_location=device)
+        query_model.load_state_dict(ckpt['model'])
+        optimizer.load_state_dict(ckpt['optimizer'])
+        scheduler.load_state_dict(ckpt['scheduler'])
+        start_step = ckpt['step']
+        print(f"  Resumed at step {start_step}")
+
     losses = []
     val_metrics = []
+    checkpoints_saved = []
 
-    for step in range(n_steps):
+    for step in range(start_step, n_steps):
         query_model.train()
 
         # Sample batch
@@ -643,6 +667,20 @@ def e3_2_single_frame_prediction(runner: ExperimentRunner) -> dict:
                 "e3_2/val_copy_cos_sim": copy_mean,
                 "e3_2/val_improvement": improvement,
             }, step=step)
+
+        # Save checkpoint at intervals
+        if (step + 1) % checkpoint_interval == 0:
+            ckpt_path = os.path.join(checkpoint_dir, f"step_{step + 1:06d}.pt")
+            torch.save({
+                'step': step + 1,
+                'model': query_model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'scheduler': scheduler.state_dict(),
+                'val_pred_sim': pred_mean if 'pred_mean' in dir() else 0.0,
+                'val_improvement': improvement if 'improvement' in dir() else 0.0,
+            }, ckpt_path)
+            checkpoints_saved.append(ckpt_path)
+            print(f"    Checkpoint saved: {ckpt_path}")
 
     runner.log_metrics({
         "e3_2/stage": 4,
