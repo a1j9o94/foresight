@@ -98,3 +98,9 @@ temp/
 output/
 outputs/
 results/
+
+# Frontend
+demo/frontend/node_modules/
+
+# Playwright MCP cache
+.playwright-mcp/

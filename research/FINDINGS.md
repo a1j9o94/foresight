@@ -7,15 +7,41 @@ High-level summary of Foresight experiment results. For detailed findings, see i
 ## Project Status
 
 **Current Phase:** Phase 3 - Future Prediction (starting)
-**Overall Progress:** Gate 1 PASSED ✅ | Gate 2 PASSED ✅
+**Overall Progress:** Gate 1 PASSED ✅ | Gate 2 PASSED ✅ | **Demo LIVE** 🚀
 
 **Key Achievements:**
 - **Gate 1:** Hybrid Encoder (P2) validated - spatial_iou=0.837, lpips=0.162
 - **Gate 2:** Bridging validated - Q3 tc=0.690, C2 param_efficiency=1.165
 - **Q3:** Temporal Coherence passed (accepted) - tc=0.690 with first-frame-only conditioning
 - **C2:** Adapter Bridging passed - 10M adapter achieves 116.5% of 100M quality
+- **Demo:** Live inference pipeline deployed (2026-01-23) - Qwen2.5-VL + LTX-Video on Modal
 
-**Next Steps:** Begin Phase 3 experiments (C3 - Future Prediction).
+**Next Steps:** Train coherent prediction model; build evaluation framework for video predictions.
+
+---
+
+## Demo Milestone (2026-01-23) 🎉
+
+**First Successful End-to-End Inference!**
+
+The complete inference pipeline is now live:
+- **Frontend:** React/TypeScript on Vercel (https://foresight-demo-kappa.vercel.app)
+- **Backend:** FastAPI on Fly.io with WebSocket streaming
+- **Inference:** Modal GPU (A10G) running Qwen2.5-VL-7B + LTX-Video
+
+**What's Working:**
+- Multi-image context (upload multiple images for richer VLM understanding)
+- Concurrent text + video generation (streaming both simultaneously)
+- Real-time "Thinking" state with visual feedback
+- Markdown rendering in chat responses
+- Video frame playback with timeline scrubbing
+
+**What Needs Work:**
+- Model produces incoherent predictions (expected - no trained prediction head yet)
+- Need evaluation framework to measure prediction quality
+- Training pipeline for future prediction (C3 experiments)
+
+**First Test Conversation:** See `research/experiments/demo-tests/first-successful-test-2026-01-23.md`
 
 ---
 
@@ -169,6 +195,36 @@ High-level summary of Foresight experiment results. For detailed findings, see i
 
 ---
 
+## Phase 3: Can the VLM predict future states?
+
+### [C3: Future Prediction](experiments/c3-future-prediction/results.yaml) - IN PROGRESS
+
+**Question:** Can VLM predict future world states in latent space?
+
+**Status:** Handlers implemented, experiments running on Modal
+
+| Metric | Value | Threshold | Result |
+|--------|-------|-----------|--------|
+| Cosine Similarity (t+5) | - | > 0.65 | Running |
+
+**Sub-experiments:**
+- E3.1: Sanity check - Verify query tokens can learn from VLM hidden states (implemented)
+- E3.2: Single frame prediction - Predict next frame latent from current frame (implemented)
+- E3.3: Action-conditioned prediction - Test if action text improves prediction (implemented)
+
+**Architecture:**
+- **FuturePredictionQueries**: Learnable query tokens (32 queries) with cross-attention layers
+- **ActionConditionedQueries**: Extends queries with action embedding gating for E3.3
+- Uses VLM hidden states from Qwen2.5-VL-7B as context
+
+**Key Dependencies:**
+- C2: Adapter Bridging (PASSED) - Efficient adapter architecture validated
+- Q3: Temporal Coherence (PASSED) - First-frame conditioning strategy selected
+
+→ [Full details](experiments/c3-future-prediction/results.yaml)
+
+---
+
 ## Decision Gates
 
 ### Gate 2: Bridging
@@ -289,6 +345,11 @@ This is noted for future study as mAP is secondary to the core video generation 
 
 | Date | Update |
 |------|--------|
+| 2026-01-23 | **DEMO LIVE** - First successful end-to-end inference! Frontend (Vercel) + Backend (Fly.io) + Inference (Modal A10G) |
+| 2026-01-23 | Frontend polish - Markdown rendering, thinking states, bouncing dots during inference |
+| 2026-01-23 | Multi-image context support - VLM can now see multiple uploaded images |
+| 2026-01-23 | **C3 handlers implemented** - E3.1, E3.2, E3.3 handlers created and running on Modal |
+| 2026-01-23 | **C3 started** - Created results.yaml structure for Phase 3 future prediction experiments |
 | 2026-01-22 | **Gate 2 PASSED** - Both Q3 and C2 validated; proceeding to Phase 3 |
 | 2026-01-22 | **C2 PASSED** - 10M adapter achieves 116.5% of 100M quality (param_efficiency=1.165) |
 | 2026-01-22 | **Q3 PASSED (accepted)** - tc=0.690 with first-frame-only conditioning; within 1.5% of threshold |

@@ -147,6 +147,7 @@ export function App() {
             currentPrediction={currentPrediction}
             predictionHistory={predictionHistory}
             onSelectPrediction={selectPrediction}
+            isThinking={isLoading || isStreaming}
           />
         </div>
       </main>

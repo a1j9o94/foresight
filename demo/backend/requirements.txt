@@ -3,6 +3,7 @@
 # Web framework
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
 
 # Data validation
 pydantic>=2.5.0
@@ -13,6 +14,9 @@ Pillow>=10.0.0
 
 # Async support
 anyio>=4.0.0
+
+# Modal remote inference
+modal>=0.64.0
 
 # Optional: ML dependencies (only needed when MOCK_MODE=false)
 # torch>=2.0.0

@@ -125,7 +125,10 @@ async def get_config() -> dict:
     """Get the current configuration (non-sensitive values only)."""
     settings = get_settings()
     return {
+        "inference_mode": settings.inference_mode,
         "mock_mode": settings.mock_mode,
+        "modal_mode": settings.modal_mode,
+        "modal_app_name": settings.modal_app_name if settings.modal_mode else None,
         "num_frames": settings.num_frames,
         "fps": settings.fps,
         "resolution": settings.resolution,

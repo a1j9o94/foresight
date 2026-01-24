@@ -23,7 +23,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     settings = get_settings()
     logger.info("Starting Foresight demo backend...")
-    logger.info(f"Mock mode: {settings.mock_mode}")
+    logger.info(f"Inference mode: {settings.inference_mode}")
+    if settings.modal_mode:
+        logger.info(f"Modal app: {settings.modal_app_name}")
     logger.info(f"Debug mode: {settings.debug}")
 
     # Create cache directory if needed

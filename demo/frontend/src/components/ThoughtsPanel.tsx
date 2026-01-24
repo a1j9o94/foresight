@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { clsx } from 'clsx';
 import type { Prediction, PredictionFrame } from '@/types';
-import { VideoPlayer } from './VideoPlayer';
+import { FramePlayer } from './FramePlayer';
 import { MetricsCard } from './MetricsDisplay';
 import { Timeline } from './Timeline';
 import { Eye, Layers, History, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
@@ -10,6 +10,7 @@ interface ThoughtsPanelProps {
   currentPrediction?: Prediction;
   predictionHistory?: Prediction[];
   onSelectPrediction?: (prediction: Prediction) => void;
+  isThinking?: boolean;
   className?: string;
 }
 
@@ -17,6 +18,7 @@ export function ThoughtsPanel({
   currentPrediction,
   predictionHistory = [],
   onSelectPrediction,
+  isThinking = false,
   className,
 }: ThoughtsPanelProps) {
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
@@ -96,7 +98,7 @@ export function ThoughtsPanel({
       {/* Main content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {!currentPrediction ? (
-          <EmptyThoughtsState />
+          isThinking ? <ThinkingState /> : <EmptyThoughtsState />
         ) : hasError ? (
           <ErrorState message={currentPrediction.errorMessage} />
         ) : (
@@ -113,10 +115,12 @@ export function ThoughtsPanel({
                   </span>
                 )}
               </div>
-              <VideoPlayer
-                src={currentPrediction.videoUrl}
-                poster={currentPrediction.thumbnailUrl}
-                autoPlay={!isGenerating}
+              <FramePlayer
+                frames={currentPrediction.frames}
+                fps={15}
+                autoPlay={!isGenerating && currentPrediction.frames.length > 0}
+                loop={true}
+                onFrameChange={setSelectedFrameIndex}
               />
               {isGenerating && (
                 <GeneratingOverlay progress={getProgressPercent(currentPrediction)} />
@@ -166,6 +170,27 @@ function EmptyThoughtsState() {
       <p className="text-sm text-surface-400 max-w-xs">
         Start a conversation to see the AI's visual predictions appear here.
       </p>
+    </div>
+  );
+}
+
+function ThinkingState() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-6">
+      <div className="w-20 h-20 rounded-full bg-primary-50 flex items-center justify-center mb-4">
+        <Loader2 className="w-10 h-10 text-primary-500 animate-spin" />
+      </div>
+      <h3 className="text-lg font-medium text-surface-700 mb-2">
+        Thinking...
+      </h3>
+      <p className="text-sm text-surface-400 max-w-xs mb-4">
+        Analyzing the scene and preparing visual prediction
+      </p>
+      <div className="flex items-center gap-1.5">
+        <span className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+        <span className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+        <span className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+      </div>
     </div>
   );
 }

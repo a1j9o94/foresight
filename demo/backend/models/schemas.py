@@ -4,7 +4,22 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+def to_camel(string: str) -> str:
+    """Convert snake_case to camelCase."""
+    components = string.split("_")
+    return components[0] + "".join(x.title() for x in components[1:])
+
+
+class CamelCaseModel(BaseModel):
+    """Base model that outputs camelCase JSON."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 
 class PredictionMetrics(BaseModel):
@@ -104,8 +119,13 @@ class SystemStatus(BaseModel):
     """System status information."""
 
     ready: bool = Field(..., description="Whether the system is ready")
-    model_loaded: bool = Field(..., description="Whether models are loaded")
-    mock_mode: bool = Field(..., description="Whether mock mode is enabled")
+    model_loaded: bool = Field(default=False, description="Whether models are loaded")
+    mock_mode: bool = Field(default=False, description="Whether mock mode is enabled")
+    modal_mode: bool = Field(default=False, description="Whether Modal remote inference is enabled")
+    inference_mode: str | None = Field(
+        default=None,
+        description="Current inference mode: mock, modal, or local",
+    )
     vram_usage_gb: float | None = Field(
         default=None,
         description="Current VRAM usage in GB",
@@ -117,6 +137,10 @@ class SystemStatus(BaseModel):
     current_model: str | None = Field(
         default=None,
         description="Currently loaded model name",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if service is not ready",
     )
 
 
@@ -130,7 +154,7 @@ class WebSocketMessageType(str, Enum):
     ERROR = "error"
 
 
-class TextChunkData(BaseModel):
+class TextChunkData(CamelCaseModel):
     """Data for text chunk WebSocket messages."""
 
     message_id: str = Field(..., description="Message ID this chunk belongs to")
@@ -138,13 +162,13 @@ class TextChunkData(BaseModel):
     done: bool = Field(default=False, description="Whether this is the final chunk")
 
 
-class PredictionStartData(BaseModel):
+class PredictionStartData(CamelCaseModel):
     """Data for prediction start WebSocket messages."""
 
     prediction_id: str = Field(..., description="Prediction ID")
 
 
-class PredictionProgressData(BaseModel):
+class PredictionProgressData(CamelCaseModel):
     """Data for prediction progress WebSocket messages."""
 
     prediction_id: str = Field(..., description="Prediction ID")
@@ -153,17 +177,39 @@ class PredictionProgressData(BaseModel):
     total_frames: int | None = Field(default=None, description="Total frames to generate")
 
 
-class PredictionCompleteData(BaseModel):
+class PredictionCompleteData(CamelCaseModel):
     """Data for prediction complete WebSocket messages."""
 
     prediction_id: str = Field(..., description="Prediction ID")
     video_url: str = Field(..., description="URL to the generated video")
     thumbnail_url: str = Field(..., description="URL to the thumbnail")
-    frames: list[PredictionFrame] = Field(..., description="Frame data")
-    metrics: PredictionMetrics = Field(..., description="Prediction metrics")
+    frames: list["PredictionFrameData"] = Field(..., description="Frame data")
+    metrics: "PredictionMetricsData" = Field(..., description="Prediction metrics")
 
 
-class ErrorData(BaseModel):
+class PredictionFrameData(CamelCaseModel):
+    """Frame data for WebSocket messages (camelCase)."""
+
+    index: int = Field(..., ge=0, description="Frame index")
+    timestamp: float = Field(..., ge=0, description="Timestamp in seconds")
+    image_url: str = Field(..., description="URL to the frame image")
+
+
+class PredictionMetricsData(CamelCaseModel):
+    """Metrics data for WebSocket messages (camelCase)."""
+
+    lpips: float = Field(..., ge=0, le=1, description="LPIPS perceptual similarity score")
+    confidence: float = Field(..., ge=0, le=1, description="Model confidence score")
+    latency_ms: float = Field(..., ge=0, description="Generation latency in milliseconds")
+    spatial_iou: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Spatial IoU score (if available)",
+    )
+
+
+class ErrorData(CamelCaseModel):
     """Data for error WebSocket messages."""
 
     message: str = Field(..., description="Error message")

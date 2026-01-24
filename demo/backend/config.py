@@ -21,11 +21,37 @@ class Settings(BaseSettings):
         description="Allowed CORS origins",
     )
 
-    # Model settings
-    mock_mode: bool = Field(
-        default=True,
-        description="Use mock responses instead of real models (no GPU required)",
+    # Inference mode settings
+    inference_mode: Literal["mock", "local", "modal"] = Field(
+        default="mock",
+        description=(
+            "Inference mode: "
+            "'mock' = placeholder responses (no GPU), "
+            "'local' = local GPU inference, "
+            "'modal' = remote GPU inference via Modal"
+        ),
     )
+    modal_app_name: str = Field(
+        default="foresight-inference",
+        description="Modal app name for inference endpoint",
+    )
+    modal_gpu: str = Field(
+        default="A100-80GB",
+        description="GPU type for Modal inference",
+    )
+
+    # Legacy mock_mode for backwards compatibility
+    @property
+    def mock_mode(self) -> bool:
+        """Backwards compatibility: mock_mode is True when inference_mode is 'mock'."""
+        return self.inference_mode == "mock"
+
+    @property
+    def modal_mode(self) -> bool:
+        """True when using Modal remote inference."""
+        return self.inference_mode == "modal"
+
+    # Model settings
     vlm_model: str = Field(
         default="Qwen/Qwen2.5-VL-7B-Instruct",
         description="Vision-language model to use",
@@ -42,17 +68,29 @@ class Settings(BaseSettings):
         default=True,
         description="Enable DINOv2 hybrid encoder (P2 experiment)",
     )
+    use_adapter: bool = Field(
+        default=True,
+        description="Enable QueryAdapter for conditioning video generation",
+    )
 
     # Generation settings
     num_frames: int = Field(default=30, description="Number of frames to generate")
     fps: int = Field(default=15, description="Frames per second for video output")
-    resolution: tuple[int, int] = Field(
-        default=(512, 512),
-        description="Video resolution (width, height)",
-    )
+    video_width: int = Field(default=512, description="Video frame width")
+    video_height: int = Field(default=512, description="Video frame height")
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        """Video resolution as (width, height) tuple."""
+        return (self.video_width, self.video_height)
+
     guidance_scale: float = Field(
         default=7.5,
         description="Classifier-free guidance scale",
+    )
+    num_inference_steps: int = Field(
+        default=30,
+        description="Number of diffusion inference steps",
     )
 
     # Performance settings
@@ -61,6 +99,10 @@ class Settings(BaseSettings):
     max_history: int = Field(
         default=10,
         description="Maximum number of predictions to keep in history",
+    )
+    max_new_tokens: int = Field(
+        default=512,
+        description="Maximum tokens for VLM text generation",
     )
 
     # Paths

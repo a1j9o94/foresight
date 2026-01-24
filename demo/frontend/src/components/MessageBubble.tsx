@@ -1,4 +1,5 @@
 import { clsx } from 'clsx';
+import Markdown from 'react-markdown';
 import type { ChatMessage } from '@/types';
 import { User, Bot } from 'lucide-react';
 
@@ -47,12 +48,18 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
         {/* Text content */}
         {message.content && (
           <div className={clsx('message-bubble', isUser ? 'user' : 'assistant')}>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">
-              {message.content}
-              {isStreaming && !isUser && (
-                <span className="inline-block w-1.5 h-4 bg-current ml-0.5 animate-pulse" />
-              )}
-            </p>
+            {isUser ? (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                {message.content}
+              </p>
+            ) : (
+              <div className="prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:my-2">
+                <Markdown>{message.content}</Markdown>
+                {isStreaming && (
+                  <span className="inline-block w-1.5 h-4 bg-current ml-0.5 animate-pulse" />
+                )}
+              </div>
+            )}
           </div>
         )}
 

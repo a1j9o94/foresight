@@ -345,6 +345,7 @@ class ResultsWriter:
     def save_json_artifact(self, filename: str, data: dict) -> str:
         """Save a JSON artifact and return its relative path."""
         artifact_path = self.artifacts_dir / filename
+        data = _convert_numpy_types(data)
         with open(artifact_path, "w") as f:
             json.dump(data, f, indent=2)
         return f"artifacts/{filename}"

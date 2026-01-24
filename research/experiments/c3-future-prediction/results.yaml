@@ -1,0 +1,59 @@
+# C3: Future Prediction - Experiment Results
+# Phase 3: Can the VLM predict future world states?
+
+experiment_id: c3-future-prediction
+claim: "VLM can predict future world states in latent space"
+status: in_progress
+
+# Execution metadata
+executed_by: null
+started_at: null
+completed_at: null
+
+# Pre-registered success criteria (from research_plan.yaml)
+success_criteria:
+  cosine_sim_t5:
+    target: 0.75
+    acceptable: 0.65
+    failure: 0.50
+    direction: higher
+    note: "Cosine similarity at t+5 frames"
+
+# Results from each sub-experiment
+results:
+  experiments:
+    e3_1_sanity_check:
+      status: pending
+      finding: null
+      metrics: {}
+      artifacts: []
+
+    e3_2_single_frame:
+      status: pending
+      finding: null
+      metrics: {}
+      artifacts: []
+
+    e3_3_action_conditioned:
+      status: pending
+      finding: null
+      metrics: {}
+      artifacts: []
+
+# Overall assessment (fill when all experiments complete)
+assessment:
+  success_criteria_met: null
+  cosine_sim_t5_achieved: null
+  confidence: null
+  confidence_notes: null
+
+# Recommendation based on results
+recommendation: null
+recommendation_notes: null
+
+# Issues discovered
+blockers: []
+issues: []
+
+# Link to detailed analysis
+detailed_analysis: null

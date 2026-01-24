@@ -40,8 +40,8 @@ export function useWebSocket({
   onOpen,
   onClose,
   autoReconnect = true,
-  reconnectInterval = 3000,
-  maxReconnectAttempts = 5,
+  reconnectInterval = 5000,
+  maxReconnectAttempts = 3,
 }: UseWebSocketOptions): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -101,13 +101,18 @@ export function useWebSocket({
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
+        console.log(`[WebSocket] Connected to ${wsUrl}`);
         setIsConnected(true);
         setIsConnecting(false);
         reconnectAttemptsRef.current = 0;
         onOpen?.();
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        const reason = event.reason || 'No reason provided';
+        const wasClean = event.wasClean ? 'clean' : 'abnormal';
+        console.log(`[WebSocket] Disconnected (${wasClean}, code=${event.code}): ${reason}`);
+
         setIsConnected(false);
         setIsConnecting(false);
         wsRef.current = null;
@@ -116,18 +121,23 @@ export function useWebSocket({
         // Auto-reconnect logic
         if (autoReconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current += 1;
+          const delay = reconnectInterval * Math.min(reconnectAttemptsRef.current, 3); // Exponential backoff capped at 3x
           console.log(
-            `WebSocket closed. Reconnecting attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts}...`
+            `[WebSocket] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`
           );
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connect();
-          }, reconnectInterval);
+          }, delay);
+        } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+          console.error(`[WebSocket] Max reconnect attempts (${maxReconnectAttempts}) reached. Giving up.`);
+          setLastError(`Connection failed after ${maxReconnectAttempts} attempts`);
         }
       };
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setLastError('Connection error');
+      ws.onerror = () => {
+        // Note: Browser WebSocket error events don't contain useful info for security reasons
+        console.error(`[WebSocket] Connection error to ${wsUrl}`);
+        setLastError('Connection error - server may be unavailable');
         setIsConnecting(false);
       };
 

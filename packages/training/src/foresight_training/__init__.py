@@ -1,3 +1,8 @@
 """Foresight Training - GLP trainer, data loaders, and loss functions."""
 
 __version__ = "0.1.0"
+
+# Re-export data module for convenient access
+from foresight_training import data
+
+__all__ = ["data"]

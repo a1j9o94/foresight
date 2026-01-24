@@ -48,10 +48,23 @@ async function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function getWebSocketUrl(path: string): string {
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (!apiUrl) {
+    // Fall back to relative path (for Vite proxy in dev)
+    return path;
+  }
+  // Convert HTTP URL to WebSocket URL
+  const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
+  const wsHost = apiUrl.replace(/^https?:\/\//, '');
+  return `${wsProtocol}://${wsHost}${path}`;
+}
+
 export function useChat({
-  wsUrl = '/ws/chat',
+  wsUrl,
   onError,
 }: UseChatOptions = {}): UseChatReturn {
+  const effectiveWsUrl = wsUrl ?? getWebSocketUrl('/ws/chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [currentPredictionId, setCurrentPredictionId] = useState<string | undefined>();
@@ -60,6 +73,8 @@ export function useChat({
   const [streamingMessageId, setStreamingMessageId] = useState<string | undefined>();
 
   const pendingMessageRef = useRef<{ id: string; content: string } | null>(null);
+  // Store all images in the conversation for multi-image context
+  const imagesBase64Ref = useRef<string[]>([]);
 
   // Handlers for WebSocket messages
   const handleTextChunk = useCallback((data: TextChunkData) => {
@@ -67,6 +82,9 @@ export function useChat({
       setIsStreaming(false);
       setStreamingMessageId(undefined);
       pendingMessageRef.current = null;
+      // Also clear loading if there's no pending prediction
+      // (i.e., for text-only responses without images)
+      setIsLoading(false);
       return;
     }
 
@@ -180,7 +198,7 @@ export function useChat({
   }, []);
 
   const { isConnected, connect, disconnect, send } = useWebSocket({
-    url: wsUrl,
+    url: effectiveWsUrl,
     onTextChunk: handleTextChunk,
     onPredictionStart: handlePredictionStart,
     onPredictionProgress: handlePredictionProgress,
@@ -190,11 +208,20 @@ export function useChat({
     onClose: handleClose,
   });
 
-  // Auto-connect on mount
+  // Auto-connect on mount - using refs to avoid reconnection cycles
+  // when callback dependencies change
+  const connectRef = useRef(connect);
+  const disconnectRef = useRef(disconnect);
+
   useEffect(() => {
-    connect();
-    return () => disconnect();
-  }, [connect, disconnect]);
+    connectRef.current = connect;
+    disconnectRef.current = disconnect;
+  });
+
+  useEffect(() => {
+    connectRef.current();
+    return () => disconnectRef.current();
+  }, []);
 
   const sendMessage = useCallback(
     async (content: string, image?: File) => {
@@ -230,13 +257,25 @@ export function useChat({
       pendingMessageRef.current = { id: assistantMessageId, content: '' };
 
       // Send via WebSocket
-      const payload: { message: string; messageId: string; imageBase64?: string } = {
+      const payload: { message: string; messageId: string; imageBase64?: string; imagesBase64?: string[] } = {
         message: content,
         messageId: assistantMessageId,
       };
 
       if (image) {
-        payload.imageBase64 = await fileToBase64(image);
+        // New image provided - add to accumulated images
+        const imageBase64 = await fileToBase64(image);
+        imagesBase64Ref.current = [...imagesBase64Ref.current, imageBase64];
+      }
+
+      // Send all accumulated images for multi-image context
+      if (imagesBase64Ref.current.length > 0) {
+        // For backwards compatibility, send most recent as imageBase64
+        payload.imageBase64 = imagesBase64Ref.current[imagesBase64Ref.current.length - 1];
+        // Send all images for multi-image inference
+        if (imagesBase64Ref.current.length > 1) {
+          payload.imagesBase64 = imagesBase64Ref.current;
+        }
       }
 
       send(payload);
@@ -251,6 +290,7 @@ export function useChat({
     setIsLoading(false);
     setIsStreaming(false);
     setStreamingMessageId(undefined);
+    imagesBase64Ref.current = [];
     pendingMessageRef.current = null;
   }, []);
 
