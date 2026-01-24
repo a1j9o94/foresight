@@ -31,6 +31,7 @@ from ..models.schemas import (
     PredictionStartData,
     PredictionProgressData,
     PredictionCompleteData,
+    VideoPromptData,
     ErrorData,
     PredictionFrameData,
     PredictionMetricsData,
@@ -357,6 +358,22 @@ async def stream_concurrent_generation(
                     connection_id,
                     WebSocketMessageType.PREDICTION_START,
                     PredictionStartData(prediction_id=prediction_id).model_dump(by_alias=True),
+                )
+
+                # Send video prompt information
+                await manager.send_message(
+                    connection_id,
+                    WebSocketMessageType.VIDEO_PROMPT,
+                    VideoPromptData(
+                        prediction_id=prediction_id,
+                        text_prompt=message,
+                        conditioning_type="hybrid_encoder" if settings.use_hybrid_encoder else (
+                            "ltx_condition" if image else "text_only"
+                        ),
+                        image_used=image is not None,
+                        hybrid_encoder_used=settings.use_hybrid_encoder,
+                        image_dimensions=(image.width, image.height) if image else None,
+                    ).model_dump(by_alias=True),
                 )
 
             elif item_type == "video_progress":

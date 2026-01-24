@@ -107,7 +107,7 @@ class VideoGenerator:
 
     @modal.enter()
     def load_model(self) -> None:
-        """Load LTX-Video model on container startup."""
+        """Load LTX-Video model on container startup with image conditioning support."""
         import torch
         from diffusers import LTXPipeline
 
@@ -131,6 +131,27 @@ class VideoGenerator:
             torch_dtype=torch.bfloat16,
         )
         self.pipeline = self.pipeline.to(self.device)
+
+        # Try to load condition pipeline for image-conditioned generation
+        try:
+            from diffusers import LTXConditionPipeline
+
+            print("  Loading LTXConditionPipeline for image conditioning...")
+            self.condition_pipeline = LTXConditionPipeline.from_pretrained(
+                "Lightricks/LTX-Video",
+                torch_dtype=torch.bfloat16,
+            )
+            self.condition_pipeline = self.condition_pipeline.to(self.device)
+            self.has_condition_pipeline = True
+            print("  LTXConditionPipeline loaded successfully")
+        except ImportError:
+            print("  LTXConditionPipeline not available")
+            self.condition_pipeline = None
+            self.has_condition_pipeline = False
+        except Exception as e:
+            print(f"  Warning: Could not load LTXConditionPipeline: {e}")
+            self.condition_pipeline = None
+            self.has_condition_pipeline = False
 
         print(f"LTX-Video loaded in {time.time() - start:.1f}s")
 
@@ -278,6 +299,9 @@ class VideoGenerator:
     ) -> dict[str, Any]:
         """Generate video frames conditioned on an input image.
 
+        Uses LTXConditionPipeline if available for native image conditioning,
+        otherwise falls back to inserting the input image as the first frame.
+
         Args:
             prompt: Text prompt for video generation
             image_base64: Base64-encoded input image for conditioning
@@ -296,48 +320,95 @@ class VideoGenerator:
         from PIL import Image
 
         start_time = time.time()
+        used_native_conditioning = False
 
         # Decode input image
         image_data = base64.b64decode(image_base64)
         input_image = Image.open(io.BytesIO(image_data)).convert("RGB")
         input_image = input_image.resize((width, height))
 
-        # Generate video
-        # Note: Standard LTX-Video is text-to-video only
-        # Image conditioning would require image-to-video variant or custom conditioning
+        # Generate video with native image conditioning if available
         with torch.no_grad():
-            output = self.pipeline(
-                prompt=prompt,
-                num_frames=num_frames,
-                height=height,
-                width=width,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-            )
+            if self.has_condition_pipeline and self.condition_pipeline is not None:
+                try:
+                    from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
+
+                    print("Using LTXConditionPipeline for image-conditioned generation")
+
+                    # Create condition with frame_index=0 (first-frame anchoring)
+                    condition = LTXVideoCondition(
+                        image=input_image,
+                        frame_index=0,
+                    )
+
+                    output = self.condition_pipeline(
+                        prompt=prompt,
+                        conditions=[condition],
+                        num_frames=num_frames,
+                        height=height,
+                        width=width,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                    )
+                    used_native_conditioning = True
+
+                except (ImportError, Exception) as e:
+                    print(f"Native conditioning failed: {e}, falling back to insert method")
+                    output = self.pipeline(
+                        prompt=prompt,
+                        num_frames=num_frames,
+                        height=height,
+                        width=width,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                    )
+            else:
+                # Standard text-to-video generation
+                output = self.pipeline(
+                    prompt=prompt,
+                    num_frames=num_frames,
+                    height=height,
+                    width=width,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                )
 
         # Extract frames
         frames = output.frames[0]
-
-        # Use input image as first frame for continuity
         frames_base64 = []
 
-        # First frame: input image
-        buffer = io.BytesIO()
-        input_image.save(buffer, format="PNG")
-        frames_base64.append(base64.b64encode(buffer.getvalue()).decode())
+        if used_native_conditioning:
+            # Native conditioning: all frames should be coherent with input
+            for frame in frames:
+                if isinstance(frame, np.ndarray):
+                    pil_frame = Image.fromarray(frame)
+                elif isinstance(frame, Image.Image):
+                    pil_frame = frame
+                else:
+                    pil_frame = Image.fromarray(frame.cpu().numpy().astype(np.uint8))
 
-        # Remaining frames: generated video (skip first if same resolution)
-        for i, frame in enumerate(frames[1:] if len(frames) > 1 else frames):
-            if isinstance(frame, np.ndarray):
-                pil_frame = Image.fromarray(frame)
-            elif isinstance(frame, Image.Image):
-                pil_frame = frame
-            else:
-                pil_frame = Image.fromarray(frame.cpu().numpy().astype(np.uint8))
-
+                buffer = io.BytesIO()
+                pil_frame.save(buffer, format="PNG")
+                frames_base64.append(base64.b64encode(buffer.getvalue()).decode())
+        else:
+            # Fallback: Use input image as first frame for continuity
+            # First frame: input image
             buffer = io.BytesIO()
-            pil_frame.save(buffer, format="PNG")
+            input_image.save(buffer, format="PNG")
             frames_base64.append(base64.b64encode(buffer.getvalue()).decode())
+
+            # Remaining frames: generated video (skip first to keep count)
+            for frame in frames[1:] if len(frames) > 1 else frames:
+                if isinstance(frame, np.ndarray):
+                    pil_frame = Image.fromarray(frame)
+                elif isinstance(frame, Image.Image):
+                    pil_frame = frame
+                else:
+                    pil_frame = Image.fromarray(frame.cpu().numpy().astype(np.uint8))
+
+                buffer = io.BytesIO()
+                pil_frame.save(buffer, format="PNG")
+                frames_base64.append(base64.b64encode(buffer.getvalue()).decode())
 
         generation_time = time.time() - start_time
 
@@ -350,6 +421,8 @@ class VideoGenerator:
             "generation_time_s": generation_time,
             "effective_fps": len(frames_base64) / generation_time if generation_time > 0 else 0,
             "input_image_used": True,
+            "used_native_conditioning": used_native_conditioning,
+            "conditioning_type": "ltx_condition" if used_native_conditioning else "first_frame_insert",
         }
 
     @modal.method()

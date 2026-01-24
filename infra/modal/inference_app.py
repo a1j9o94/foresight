@@ -166,18 +166,40 @@ class InferenceEngine:
         ])
 
     def _load_ltx_video(self) -> None:
-        """Load LTX-Video for video generation."""
+        """Load LTX-Video for video generation with image conditioning support."""
         import torch
         from diffusers import LTXPipeline
 
         print("Loading LTX-Video...")
         start = time.time()
 
+        # Load standard pipeline
         self.ltx_pipeline = LTXPipeline.from_pretrained(
             "Lightricks/LTX-Video",
             torch_dtype=torch.bfloat16,
         )
         self.ltx_pipeline = self.ltx_pipeline.to(self.device)
+
+        # Try to load condition pipeline for image-conditioned generation
+        try:
+            from diffusers import LTXConditionPipeline
+
+            print("  Loading LTXConditionPipeline for image conditioning...")
+            self.ltx_condition_pipeline = LTXConditionPipeline.from_pretrained(
+                "Lightricks/LTX-Video",
+                torch_dtype=torch.bfloat16,
+            )
+            self.ltx_condition_pipeline = self.ltx_condition_pipeline.to(self.device)
+            self.has_condition_pipeline = True
+            print("  LTXConditionPipeline loaded successfully")
+        except ImportError:
+            print("  LTXConditionPipeline not available (diffusers version may be too old)")
+            self.ltx_condition_pipeline = None
+            self.has_condition_pipeline = False
+        except Exception as e:
+            print(f"  Warning: Could not load LTXConditionPipeline: {e}")
+            self.ltx_condition_pipeline = None
+            self.has_condition_pipeline = False
 
         print(f"LTX-Video loaded in {time.time() - start:.1f}s")
 
@@ -513,6 +535,7 @@ class InferenceEngine:
         width: int = 512,
         num_inference_steps: int = 30,
         guidance_scale: float = 7.5,
+        use_image_conditioning: bool = True,
     ) -> dict[str, Any]:
         """Generate video frames from prompt and optional image.
 
@@ -524,6 +547,7 @@ class InferenceEngine:
             width: Frame width
             num_inference_steps: Diffusion steps
             guidance_scale: Classifier-free guidance scale
+            use_image_conditioning: Whether to use image as first frame anchor
 
         Returns:
             Dict with 'frames_base64' (list of base64 images) and 'metrics'
@@ -533,27 +557,92 @@ class InferenceEngine:
         import numpy as np
 
         start_time = time.time()
+        used_image_conditioning = False
 
         # Decode conditioning image if provided
         conditioning_image = None
         if image_base64:
             image_data = base64.b64decode(image_base64)
             conditioning_image = Image.open(io.BytesIO(image_data)).convert("RGB")
+            # Resize to target dimensions
+            conditioning_image = conditioning_image.resize((width, height))
 
         # Generate video
         with torch.no_grad():
-            # LTX-Video text-to-video generation
-            output = self.ltx_pipeline(
-                prompt=prompt,
-                num_frames=num_frames,
-                height=height,
-                width=width,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-            )
+            # Try to use LTXConditionPipeline for image-conditioned generation
+            if (
+                conditioning_image is not None
+                and use_image_conditioning
+                and self.has_condition_pipeline
+                and self.ltx_condition_pipeline is not None
+            ):
+                try:
+                    from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
+
+                    print("Using LTXConditionPipeline for image-conditioned generation")
+
+                    # Create condition with frame_index=0 (first-frame-only, per Q3 findings)
+                    condition = LTXVideoCondition(
+                        image=conditioning_image,
+                        frame_index=0,  # Anchor to first frame
+                    )
+
+                    output = self.ltx_condition_pipeline(
+                        prompt=prompt,
+                        conditions=[condition],
+                        num_frames=num_frames,
+                        height=height,
+                        width=width,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                    )
+                    used_image_conditioning = True
+
+                except ImportError:
+                    print("LTXVideoCondition not available, falling back to text-only")
+                    output = self.ltx_pipeline(
+                        prompt=prompt,
+                        num_frames=num_frames,
+                        height=height,
+                        width=width,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                    )
+                except Exception as e:
+                    print(f"Image conditioning failed: {e}, falling back to text-only")
+                    output = self.ltx_pipeline(
+                        prompt=prompt,
+                        num_frames=num_frames,
+                        height=height,
+                        width=width,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                    )
+            else:
+                # Standard text-to-video generation
+                output = self.ltx_pipeline(
+                    prompt=prompt,
+                    num_frames=num_frames,
+                    height=height,
+                    width=width,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                )
 
         # Extract frames
         frames = output.frames[0]  # [num_frames, height, width, 3]
+
+        # If we couldn't use image conditioning but have an image,
+        # use it as the first frame for continuity
+        if conditioning_image is not None and not used_image_conditioning:
+            # Prepend conditioning image as first frame
+            frames_list = [conditioning_image]
+            for frame in frames[:-1]:  # Skip last frame to keep same count
+                if isinstance(frame, np.ndarray):
+                    frames_list.append(Image.fromarray(frame))
+                else:
+                    frames_list.append(frame)
+            frames = frames_list
 
         # Convert to base64
         frames_base64 = []
@@ -576,6 +665,8 @@ class InferenceEngine:
             "width": width,
             "generation_time_s": generation_time,
             "fps": len(frames_base64) / generation_time if generation_time > 0 else 0,
+            "used_image_conditioning": used_image_conditioning,
+            "conditioning_type": "ltx_condition" if used_image_conditioning else "first_frame_insert" if conditioning_image else "text_only",
         }
 
     @modal.method()

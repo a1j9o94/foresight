@@ -11,7 +11,10 @@ Sub-experiments:
         Tests SSv2-style actions: push right/left/up/down, rotate CW/CCW
         Compares: with action vs no action vs wrong (opposite) action
         Success: Action gain > 0.05, Action specificity > 0.1
-- E3.4: Multi-Frame Future Prediction (TODO)
+- E3.4: Streaming Prediction - Multi-frame sequences with context jumps
+        Uses StreamingPredictor for recurrent prediction matching production
+        Trains on SSv2 real video data
+        Success: cos_sim > 0.65, handles context switches
 - E3.5: Action Discrimination Test (TODO)
 - E3.6: Contrastive Evaluation / Retrieval Task (TODO)
 
@@ -39,6 +42,7 @@ from typing import Callable
 from .e3_1 import e3_1_sanity_check
 from .e3_2 import e3_2_single_frame_prediction
 from .e3_3 import e3_3_action_conditioned_prediction
+from .e3_streaming import e3_streaming_prediction
 
 
 def get_handlers() -> dict[str, Callable]:
@@ -54,4 +58,7 @@ def get_handlers() -> dict[str, Callable]:
         "e3_2": e3_2_single_frame_prediction,
         # Action-conditioned prediction
         "e3_3": e3_3_action_conditioned_prediction,
+        # Streaming multi-frame prediction
+        "e3_4": e3_streaming_prediction,
+        "e3_streaming": e3_streaming_prediction,  # Alias
     }

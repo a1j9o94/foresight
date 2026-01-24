@@ -197,29 +197,44 @@ The complete inference pipeline is now live:
 
 ## Phase 3: Can the VLM predict future states?
 
-### [C3: Future Prediction](experiments/c3-future-prediction/results.yaml) - IN PROGRESS
+### [C3: Future Prediction](experiments/c3-future-prediction/results.yaml) - BASELINE COMPLETE
 
 **Question:** Can VLM predict future world states in latent space?
 
-**Status:** Handlers implemented, experiments running on Modal
+**Status:** Baseline experiments complete on synthetic data. Real data (SSv2) needed to beat copy baseline.
 
-| Metric | Value | Threshold | Result |
-|--------|-------|-----------|--------|
-| Cosine Similarity (t+5) | - | > 0.65 | Running |
+| Sub-exp | Metric | Value | Threshold | Result |
+|---------|--------|-------|-----------|--------|
+| E3.1 | Cosine Similarity | 0.998 | > 0.95 | ✅ Pass |
+| E3.2 | Predicted cos_sim | 0.989 | > 0.65 | ✅ Pass |
+| E3.2 | Improvement over copy | -0.006 | > 0.0 | ⚠️ Copy wins |
+| E3.3 | Action gain | 0.000 | > 0.05 | ⚠️ No effect |
 
-**Sub-experiments:**
-- E3.1: Sanity check - Verify query tokens can learn from VLM hidden states (implemented)
-- E3.2: Single frame prediction - Predict next frame latent from current frame (implemented)
-- E3.3: Action-conditioned prediction - Test if action text improves prediction (implemented)
+**Key Findings:**
+
+1. **E3.1 Sanity Check - PASSED ✅**
+   - Query tokens successfully learn to extract frame information (cos_sim=0.998)
+   - Training converges properly - validates the architecture
+
+2. **E3.2 Single Frame Prediction - Baseline established**
+   - Achieves high absolute prediction quality (cos_sim=0.989)
+   - But copy baseline (0.995) wins on synthetic data
+   - Reason: Consecutive frames nearly identical in slow-motion synthetic videos
+
+3. **E3.3 Action Conditioning - No effect on synthetic data**
+   - With/without/wrong action all achieve cos_sim=0.988
+   - VLM features don't capture programmatic action semantics from shape movements
+
+**Root Cause:** Synthetic data has minimal frame-to-frame variation, making copy baseline extremely strong. The model learns well (E3.1 proves this), but needs real video data where:
+- Consecutive frames have more variation → weaker copy baseline
+- Actions have visual correlates → action conditioning should help
+
+**Next Step:** Train on SSv2 real video data (requires adding foresight_training package to Modal)
 
 **Architecture:**
 - **FuturePredictionQueries**: Learnable query tokens (32 queries) with cross-attention layers
 - **ActionConditionedQueries**: Extends queries with action embedding gating for E3.3
 - Uses VLM hidden states from Qwen2.5-VL-7B as context
-
-**Key Dependencies:**
-- C2: Adapter Bridging (PASSED) - Efficient adapter architecture validated
-- Q3: Temporal Coherence (PASSED) - First-frame conditioning strategy selected
 
 → [Full details](experiments/c3-future-prediction/results.yaml)
 
@@ -345,6 +360,7 @@ This is noted for future study as mAP is secondary to the core video generation 
 
 | Date | Update |
 |------|--------|
+| 2026-01-24 | **C3 Baseline Complete** - E3.1 passed (cos_sim=0.998), E3.2/E3.3 establish baselines on synthetic data. Copy baseline wins on slow-motion synthetic videos; need SSv2 real data. |
 | 2026-01-23 | **DEMO LIVE** - First successful end-to-end inference! Frontend (Vercel) + Backend (Fly.io) + Inference (Modal A10G) |
 | 2026-01-23 | Frontend polish - Markdown rendering, thinking states, bouncing dots during inference |
 | 2026-01-23 | Multi-image context support - VLM can now see multiple uploaded images |

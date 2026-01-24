@@ -125,12 +125,75 @@ class FuturePredictionQueries(nn.Module):
         return self.output_proj(queries)
 
 
+def load_ssv2_data(
+    subset_size: int = 200,
+    num_frames: int = 24,
+    mock_mode: bool = False,
+) -> list[list[Image.Image]]:
+    """Load Something-Something v2 data or generate mock data.
+
+    Args:
+        subset_size: Number of videos to load
+        num_frames: Frames per video
+        mock_mode: If True, generate synthetic data (for testing)
+
+    Returns:
+        List of videos, each a list of PIL Images
+    """
+    if mock_mode:
+        return generate_synthetic_video_data(subset_size, num_frames)
+
+    try:
+        from foresight_training.data import SSv2Dataset
+
+        # Check if SSv2 videos are available
+        video_dir = os.environ.get("SSV2_VIDEO_DIR", "/data/ssv2/videos")
+        if not os.path.exists(video_dir):
+            print(f"  SSv2 video directory not found: {video_dir}")
+            print("  Falling back to synthetic data")
+            return generate_synthetic_video_data(subset_size, num_frames)
+
+        ds = SSv2Dataset(
+            split="train",
+            video_dir=video_dir,
+            subset_size=subset_size,
+            num_frames=num_frames,
+            frame_size=(224, 224),
+        )
+
+        videos = []
+        for i, sample in enumerate(ds):
+            # Convert tensor frames to PIL Images
+            frames = sample.frames  # [T, C, H, W]
+            pil_frames = []
+            for t in range(frames.size(0)):
+                frame = frames[t].permute(1, 2, 0).numpy()  # [H, W, C]
+                frame = (frame * 255).astype(np.uint8)
+                pil_frames.append(Image.fromarray(frame))
+            videos.append(pil_frames)
+
+            if (i + 1) % 50 == 0:
+                print(f"    Loaded {i + 1}/{subset_size} SSv2 videos")
+
+        print(f"  Loaded {len(videos)} videos from SSv2")
+        return videos
+
+    except ImportError as e:
+        print(f"  Could not import SSv2Dataset: {e}")
+        print("  Falling back to synthetic data")
+        return generate_synthetic_video_data(subset_size, num_frames)
+    except Exception as e:
+        print(f"  Error loading SSv2 data: {e}")
+        print("  Falling back to synthetic data")
+        return generate_synthetic_video_data(subset_size, num_frames)
+
+
 def generate_synthetic_video_data(
     n_videos: int = 200,
     n_frames: int = 24,
     img_size: int = 224,
 ) -> list[list[Image.Image]]:
-    """Generate synthetic video data with predictable motion."""
+    """Generate synthetic video data with predictable motion (fallback)."""
     videos = []
     shapes = ["circle", "square", "triangle"]
     colors = [
@@ -409,19 +472,25 @@ def e3_2_single_frame_prediction(runner: ExperimentRunner) -> dict:
     runner.log_metrics({"e3_2/stage": 0, "e3_2/progress": 0.0})
 
     # =========================================================================
-    # Stage 1: Generate synthetic video data
+    # Stage 1: Load video data (SSv2 if available, otherwise synthetic)
     # =========================================================================
-    print("\n[Stage 1/5] Generating synthetic video data...")
+    print("\n[Stage 1/5] Loading video data...")
 
     n_videos = 100
-    videos = generate_synthetic_video_data(n_videos=n_videos, n_frames=24)
+    mock_mode = os.environ.get("FORESIGHT_STUB_MODE", "false").lower() == "true"
+
+    videos = load_ssv2_data(
+        subset_size=n_videos,
+        num_frames=24,
+        mock_mode=mock_mode,
+    )
 
     # Split into train/val
     n_train = int(0.8 * n_videos)
     train_videos = videos[:n_train]
     val_videos = videos[n_train:]
 
-    print(f"  Generated {len(videos)} videos")
+    print(f"  Loaded {len(videos)} videos (mock_mode={mock_mode})")
     print(f"  Train: {len(train_videos)}, Val: {len(val_videos)}")
 
     runner.log_metrics({

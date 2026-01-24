@@ -4,6 +4,7 @@ import type {
   TextChunkData,
   PredictionProgressData,
   PredictionCompleteData,
+  VideoPromptData,
   ErrorData,
 } from '@/types';
 
@@ -13,6 +14,7 @@ interface UseWebSocketOptions {
   onPredictionStart?: (predictionId: string) => void;
   onPredictionProgress?: (data: PredictionProgressData) => void;
   onPredictionComplete?: (data: PredictionCompleteData) => void;
+  onVideoPrompt?: (data: VideoPromptData) => void;
   onError?: (data: ErrorData) => void;
   onOpen?: () => void;
   onClose?: () => void;
@@ -36,6 +38,7 @@ export function useWebSocket({
   onPredictionStart,
   onPredictionProgress,
   onPredictionComplete,
+  onVideoPrompt,
   onError,
   onOpen,
   onClose,
@@ -69,6 +72,9 @@ export function useWebSocket({
           case 'prediction_complete':
             onPredictionComplete?.(message.data as PredictionCompleteData);
             break;
+          case 'video_prompt':
+            onVideoPrompt?.(message.data as VideoPromptData);
+            break;
           case 'error':
             const errorData = message.data as ErrorData;
             setLastError(errorData.message);
@@ -81,7 +87,7 @@ export function useWebSocket({
         console.error('Failed to parse WebSocket message:', err);
       }
     },
-    [onTextChunk, onPredictionStart, onPredictionProgress, onPredictionComplete, onError]
+    [onTextChunk, onPredictionStart, onPredictionProgress, onPredictionComplete, onVideoPrompt, onError]
   );
 
   const connect = useCallback(() => {

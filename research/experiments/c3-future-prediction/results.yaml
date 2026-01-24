@@ -3,12 +3,12 @@
 
 experiment_id: c3-future-prediction
 claim: "VLM can predict future world states in latent space"
-status: in_progress
+status: baseline_complete
 
 # Execution metadata
-executed_by: null
-started_at: null
-completed_at: null
+executed_by: modal-ffc8a799
+started_at: "2026-01-24T02:23:56Z"
+completed_at: "2026-01-24T03:15:00Z"
 
 # Pre-registered success criteria (from research_plan.yaml)
 success_criteria:
@@ -23,37 +23,73 @@ success_criteria:
 results:
   experiments:
     e3_1_sanity_check:
-      status: pending
-      finding: null
-      metrics: {}
-      artifacts: []
+      status: completed
+      finding: "SANITY CHECK PASSED: Query tokens successfully learned to extract current frame information (cos_sim=0.998 > 0.95). Training converges properly."
+      metrics:
+        cosine_similarity: 0.9977
+        prediction_variance: 27.474
+        loss_decreased: true
+        converged_within_5k: true
+        passed: true
+      artifacts:
+        - artifacts/e3_1_training.png
 
     e3_2_single_frame:
-      status: pending
-      finding: null
-      metrics: {}
-      artifacts: []
+      status: completed
+      finding: "Baseline established on synthetic data. High absolute prediction quality (0.989) but copy baseline (0.995) wins due to minimal frame variation in synthetic videos."
+      metrics:
+        cosine_similarity: 0.9891
+        copy_baseline_cos_sim: 0.9953
+        copy_baseline_delta: -0.0062
+        random_baseline_delta: 0.9935
+        p_value: 0.0002
+        statistically_significant: true
+        passed: false
+      artifacts:
+        - artifacts/e3_2_training.png
+      notes: "Copy baseline extremely strong on slow-motion synthetic data. Need SSv2 real data."
 
     e3_3_action_conditioned:
-      status: pending
-      finding: null
-      metrics: {}
-      artifacts: []
+      status: completed
+      finding: "ACTION CONDITIONING FAILED on synthetic data: Action text does not improve prediction (gain=0.000). Model ignores action conditioning because VLM features don't capture programmatic action semantics."
+      metrics:
+        with_action_cos_sim: 0.9884
+        without_action_cos_sim: 0.9884
+        wrong_action_cos_sim: 0.9884
+        action_gain: 0.0
+        action_specificity: 0.0
+        p_value_gain: 0.535
+        p_value_specificity: 0.885
+        passed: false
+      artifacts:
+        - artifacts/e3_3_training.png
+      notes: "Need SSv2 real data where actions have visual correlates."
 
-# Overall assessment (fill when all experiments complete)
+# Overall assessment
 assessment:
-  success_criteria_met: null
-  cosine_sim_t5_achieved: null
-  confidence: null
-  confidence_notes: null
+  success_criteria_met: false
+  cosine_sim_t5_achieved: 0.989  # High absolute, but doesn't beat copy baseline
+  confidence: medium
+  confidence_notes: "Architecture validated (E3.1 passes). Synthetic data limitation identified. Need real video data to properly evaluate future prediction capability."
 
 # Recommendation based on results
-recommendation: null
-recommendation_notes: null
+recommendation: proceed_with_real_data
+recommendation_notes: |
+  The model learns well (E3.1 proves query tokens work), achieving high absolute
+  prediction quality (cos_sim=0.989). However, on synthetic data with slow motion,
+  the copy baseline (0.995) is nearly unbeatable.
+
+  Next step: Train on SSv2 real video data where:
+  1. Consecutive frames have more variation → weaker copy baseline
+  2. Actions have visual correlates → action conditioning should help
 
 # Issues discovered
-blockers: []
-issues: []
+blockers:
+  - "foresight_training package not available on Modal - falls back to synthetic data"
+
+issues:
+  - "W&B step logging warnings due to non-monotonic steps across sub-experiments"
+  - "Model parameter count (488M for E3.2) larger than plan suggested"
 
 # Link to detailed analysis
-detailed_analysis: null
+detailed_analysis: "See research/FINDINGS.md Phase 3 section"

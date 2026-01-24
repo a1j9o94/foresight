@@ -151,6 +151,7 @@ class WebSocketMessageType(str, Enum):
     PREDICTION_START = "prediction_start"
     PREDICTION_PROGRESS = "prediction_progress"
     PREDICTION_COMPLETE = "prediction_complete"
+    VIDEO_PROMPT = "video_prompt"
     ERROR = "error"
 
 
@@ -166,6 +167,30 @@ class PredictionStartData(CamelCaseModel):
     """Data for prediction start WebSocket messages."""
 
     prediction_id: str = Field(..., description="Prediction ID")
+
+
+class VideoPromptData(CamelCaseModel):
+    """Data for video prompt WebSocket messages.
+
+    Sent before video generation to show the user what conditioning
+    information is being used.
+    """
+
+    prediction_id: str = Field(..., description="Prediction ID")
+    text_prompt: str = Field(..., description="Text prompt used for generation")
+    conditioning_type: str = Field(
+        ...,
+        description="Type of conditioning: 'text_only', 'first_frame_insert', 'ltx_condition', or 'hybrid_encoder'"
+    )
+    image_used: bool = Field(default=False, description="Whether an image was used for conditioning")
+    hybrid_encoder_used: bool = Field(
+        default=False,
+        description="Whether the hybrid encoder (DINOv2 + VLM) was used"
+    )
+    image_dimensions: tuple[int, int] | None = Field(
+        default=None,
+        description="Dimensions of conditioning image (width, height)"
+    )
 
 
 class PredictionProgressData(CamelCaseModel):

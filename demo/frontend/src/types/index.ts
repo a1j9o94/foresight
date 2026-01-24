@@ -41,12 +41,13 @@ export type WebSocketMessageType =
   | 'prediction_start'
   | 'prediction_progress'
   | 'prediction_complete'
+  | 'video_prompt'
   | 'error';
 
 /** WebSocket message payload */
 export interface WebSocketMessage {
   type: WebSocketMessageType;
-  data: TextChunkData | PredictionProgressData | PredictionCompleteData | ErrorData;
+  data: TextChunkData | PredictionProgressData | PredictionCompleteData | VideoPromptData | ErrorData;
 }
 
 export interface TextChunkData {
@@ -73,6 +74,16 @@ export interface PredictionCompleteData {
 export interface ErrorData {
   message: string;
   code?: string;
+}
+
+/** Video prompt data showing conditioning info */
+export interface VideoPromptData {
+  predictionId: string;
+  textPrompt: string;
+  conditioningType: 'text_only' | 'first_frame_insert' | 'ltx_condition' | 'hybrid_encoder';
+  imageUsed: boolean;
+  hybridEncoderUsed: boolean;
+  imageDimensions?: [number, number];
 }
 
 /** Chat request to backend */
