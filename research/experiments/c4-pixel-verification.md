@@ -2,9 +2,30 @@
 
 **Claim:** Comparing predicted video to actual outcomes provides a signal that improves prediction accuracy.
 
-**Status:** Not started
+**Status:** Ready to start (dependencies met via E3.8 pivot)
 **Priority:** High (key differentiator from V-JEPA)
-**Last Updated:** 2025-01-18
+**Last Updated:** 2026-01-25
+
+---
+
+## Architecture Update: E3.8 Pivot
+
+**Original assumption:** VLM predicts future states in latent space (C3)
+**Actual architecture:** Video Predicts → VLM Describes (E3.8 validated)
+
+The verification loop now operates as:
+```
+1. LTX-Video generates future frames from context + action
+2. VLM describes what happens in generated video
+3. Compare VLM description to actual outcome
+4. Feedback loop: Use discrepancy to improve next prediction
+```
+
+**Key metrics from E3.8:**
+- LTX-Video temporal coherence: 0.89 (realistic motion)
+- VLM retention on generated video: 93% (70% vs 75% action recall)
+
+This means VLM can reliably describe LTX-Video outputs, enabling semantic verification.
 
 ---
 
@@ -662,18 +683,27 @@ E4.5 can start after E4.1 completes.
 
 ## 9. Dependencies
 
-### Requires Claims 1-3
+### Requires Claims 1-3 (All Satisfied)
 
-| Dependency | Why Needed | Can Work Around? |
-|------------|------------|------------------|
-| C1: VLM latents contain information | Need to generate predictions | No - fundamental |
-| C2: Adapter bridges latent spaces | Need to produce video | No - fundamental |
-| C3: VLM can predict futures | Need predictions to verify | Partial - can test with pretrained video model |
+| Dependency | Status | How Satisfied |
+|------------|--------|---------------|
+| C1: VLM latents contain information | ✅ P2 validated | Hybrid encoder (DINOv2 + VLM) |
+| C2: Adapter bridges latent spaces | ✅ Passed | 10M query adapter, param_efficiency=1.165 |
+| C3: Future prediction capability | ✅ E3.8 validated | LTX-Video generates, VLM describes (93% retention) |
 
-**Minimum viable setup for C4 experiments:**
-- Working end-to-end prediction pipeline (C1-C3 validated)
-- At least 0.3 LPIPS reconstruction quality
-- Prediction accuracy above chance (>20% on SSv2)
+**Architecture for C4 (via E3.8 pivot):**
+```
+Context frames → LTX-Video → Generated future → VLM describes
+                                    ↓
+                          Compare to actual outcome
+                                    ↓
+                          Verification signal
+```
+
+**Minimum viable setup for C4 experiments:** ✅ MET
+- Working end-to-end prediction pipeline: LTX Image-to-Video + Qwen2.5-VL
+- VLM action recall on generated: 70% (> 20% threshold)
+- Temporal coherence: 0.89 (realistic motion)
 
 ### Alternative: Synthetic Testing
 

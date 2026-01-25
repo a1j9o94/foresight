@@ -173,33 +173,37 @@ class InferenceEngine:
         print("Loading LTX-Video...")
         start = time.time()
 
-        # Load standard pipeline
+        # Load standard text-to-video pipeline (fallback)
         self.ltx_pipeline = LTXPipeline.from_pretrained(
             "Lightricks/LTX-Video",
             torch_dtype=torch.bfloat16,
         )
         self.ltx_pipeline = self.ltx_pipeline.to(self.device)
 
-        # Try to load condition pipeline for image-conditioned generation
+        # Load LTXImageToVideoPipeline for image-conditioned generation (validated in E3.8)
         try:
-            from diffusers import LTXConditionPipeline
+            from diffusers import LTXImageToVideoPipeline
 
-            print("  Loading LTXConditionPipeline for image conditioning...")
-            self.ltx_condition_pipeline = LTXConditionPipeline.from_pretrained(
+            print("  Loading LTXImageToVideoPipeline for image conditioning...")
+            self.ltx_img2vid_pipeline = LTXImageToVideoPipeline.from_pretrained(
                 "Lightricks/LTX-Video",
                 torch_dtype=torch.bfloat16,
             )
-            self.ltx_condition_pipeline = self.ltx_condition_pipeline.to(self.device)
-            self.has_condition_pipeline = True
-            print("  LTXConditionPipeline loaded successfully")
+            self.ltx_img2vid_pipeline = self.ltx_img2vid_pipeline.to(self.device)
+            self.has_img2vid_pipeline = True
+            print("  LTXImageToVideoPipeline loaded successfully (E3.8 validated)")
         except ImportError:
-            print("  LTXConditionPipeline not available (diffusers version may be too old)")
-            self.ltx_condition_pipeline = None
-            self.has_condition_pipeline = False
+            print("  LTXImageToVideoPipeline not available, will use text-only generation")
+            self.ltx_img2vid_pipeline = None
+            self.has_img2vid_pipeline = False
         except Exception as e:
-            print(f"  Warning: Could not load LTXConditionPipeline: {e}")
-            self.ltx_condition_pipeline = None
-            self.has_condition_pipeline = False
+            print(f"  Warning: Could not load LTXImageToVideoPipeline: {e}")
+            self.ltx_img2vid_pipeline = None
+            self.has_img2vid_pipeline = False
+
+        # Legacy: keep reference for backwards compatibility
+        self.ltx_condition_pipeline = None
+        self.has_condition_pipeline = False
 
         print(f"LTX-Video loaded in {time.time() - start:.1f}s")
 
@@ -569,27 +573,21 @@ class InferenceEngine:
 
         # Generate video
         with torch.no_grad():
-            # Try to use LTXConditionPipeline for image-conditioned generation
+            # Use LTXImageToVideoPipeline for image-conditioned generation (E3.8 validated)
             if (
                 conditioning_image is not None
                 and use_image_conditioning
-                and self.has_condition_pipeline
-                and self.ltx_condition_pipeline is not None
+                and self.has_img2vid_pipeline
+                and self.ltx_img2vid_pipeline is not None
             ):
                 try:
-                    from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
+                    print("Using LTXImageToVideoPipeline for image-conditioned generation")
 
-                    print("Using LTXConditionPipeline for image-conditioned generation")
-
-                    # Create condition with frame_index=0 (first-frame-only, per Q3 findings)
-                    condition = LTXVideoCondition(
+                    # Generate video continuation from conditioning image
+                    output = self.ltx_img2vid_pipeline(
                         image=conditioning_image,
-                        frame_index=0,  # Anchor to first frame
-                    )
-
-                    output = self.ltx_condition_pipeline(
                         prompt=prompt,
-                        conditions=[condition],
+                        negative_prompt="worst quality, blurry, jittery, distorted",
                         num_frames=num_frames,
                         height=height,
                         width=width,
@@ -598,18 +596,8 @@ class InferenceEngine:
                     )
                     used_image_conditioning = True
 
-                except ImportError:
-                    print("LTXVideoCondition not available, falling back to text-only")
-                    output = self.ltx_pipeline(
-                        prompt=prompt,
-                        num_frames=num_frames,
-                        height=height,
-                        width=width,
-                        num_inference_steps=num_inference_steps,
-                        guidance_scale=guidance_scale,
-                    )
                 except Exception as e:
-                    print(f"Image conditioning failed: {e}, falling back to text-only")
+                    print(f"Image-to-video failed: {e}, falling back to text-only")
                     output = self.ltx_pipeline(
                         prompt=prompt,
                         num_frames=num_frames,
@@ -666,7 +654,7 @@ class InferenceEngine:
             "generation_time_s": generation_time,
             "fps": len(frames_base64) / generation_time if generation_time > 0 else 0,
             "used_image_conditioning": used_image_conditioning,
-            "conditioning_type": "ltx_condition" if used_image_conditioning else "first_frame_insert" if conditioning_image else "text_only",
+            "conditioning_type": "ltx_img2vid" if used_image_conditioning else "first_frame_insert" if conditioning_image else "text_only",
         }
 
     @modal.method()
@@ -790,16 +778,63 @@ class InferenceEngine:
                 video_queue.put({"type": "video_start"})
 
                 with torch.no_grad():
-                    output = self.ltx_pipeline(
-                        prompt=prompt,
-                        num_frames=num_frames,
-                        height=height,
-                        width=width,
-                        num_inference_steps=30,
-                        guidance_scale=7.5,
-                    )
+                    # Use LTXImageToVideoPipeline for image-conditioned generation (E3.8 validated)
+                    used_image_conditioning = False
+                    if (
+                        primary_image is not None
+                        and self.has_img2vid_pipeline
+                        and self.ltx_img2vid_pipeline is not None
+                    ):
+                        try:
+                            # Resize conditioning image
+                            cond_image = primary_image.resize((width, height))
+
+                            output = self.ltx_img2vid_pipeline(
+                                image=cond_image,
+                                prompt=prompt,
+                                negative_prompt="worst quality, blurry, jittery, distorted",
+                                num_frames=num_frames,
+                                height=height,
+                                width=width,
+                                num_inference_steps=30,
+                                guidance_scale=7.5,
+                            )
+                            used_image_conditioning = True
+
+                        except Exception as e:
+                            print(f"Image-to-video failed in concurrent: {e}")
+                            output = self.ltx_pipeline(
+                                prompt=prompt,
+                                num_frames=num_frames,
+                                height=height,
+                                width=width,
+                                num_inference_steps=30,
+                                guidance_scale=7.5,
+                            )
+                    else:
+                        output = self.ltx_pipeline(
+                            prompt=prompt,
+                            num_frames=num_frames,
+                            height=height,
+                            width=width,
+                            num_inference_steps=30,
+                            guidance_scale=7.5,
+                        )
 
                 frames = output.frames[0]
+
+                # If no image conditioning but we have an image, insert as first frame
+                if primary_image is not None and not used_image_conditioning:
+                    import numpy as np
+                    cond_image = primary_image.resize((width, height))
+                    frames_list = [cond_image]
+                    for frame in list(frames)[:-1]:  # Drop last to keep count
+                        if isinstance(frame, np.ndarray):
+                            frames_list.append(Image.fromarray(frame))
+                        else:
+                            frames_list.append(frame)
+                    frames = frames_list
+
                 video_queue.put({"type": "video_progress", "progress": 100})
 
                 # Send frames
@@ -887,7 +922,11 @@ class InferenceEngine:
                 "vlm": hasattr(self, "vlm_model") and self.vlm_model is not None,
                 "dinov2": hasattr(self, "dinov2_model") and self.dinov2_model is not None,
                 "ltx_video": hasattr(self, "ltx_pipeline") and self.ltx_pipeline is not None,
+                "ltx_img2vid": hasattr(self, "ltx_img2vid_pipeline") and self.ltx_img2vid_pipeline is not None,
                 "adapter": hasattr(self, "adapter") and self.adapter is not None,
+            },
+            "capabilities": {
+                "image_to_video": getattr(self, "has_img2vid_pipeline", False),
             },
         }
 

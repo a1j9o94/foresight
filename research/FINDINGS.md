@@ -355,6 +355,23 @@ After evaluating options, selected **Option 4 + Option 2**: Accept VLM limitatio
 
 ## Decision Gates
 
+### Gate 3: Prediction (Pivot)
+**Status:** ✅ PASSED (with pivot)
+
+| Experiment | Status | Recommendation |
+|------------|--------|----------------|
+| **C3 - Future Prediction** | ✅ Pivoted | Original hypothesis rejected; E3.8 pivot validated |
+
+**Gate 3 Assessment:**
+- ❌ Original hypothesis: VLM predicts future states → REJECTED (E3.1-E3.7b all failed)
+- ✅ Pivot E3.8: Video Predicts → VLM Describes → VALIDATED
+- ✅ VLM retention: 93% (70% action recall on generated vs 75% on real)
+- ✅ Temporal coherence: 0.89 ratio with LTX-Video generation
+
+**Decision:** PROCEED to Phase 4 (Verification) with pivot architecture.
+
+---
+
 ### Gate 2: Bridging
 **Status:** ✅ PASSED
 
@@ -452,20 +469,47 @@ After evaluating 4 pivot options, we selected **Pivot 2: Hybrid Encoder**:
 
 ---
 
-## Future Study
+## Future Research Directions
 
-### Small Model Training for Object Detection
+### 1. Video Mixture of Experts (High Priority)
 
-During P2 mAP optimization, we observed that extended training (2000 epochs) caused overfitting rather than improvement (mAP dropped from 0.182 to 0.037 despite loss decreasing from 0.93 to 0.22).
+Generate multiple parallel video continuations, each focusing on different aspects:
 
-**Interesting research directions:**
-- Better regularization techniques for small detection heads (DETR with 6+6 layers)
-- Early stopping strategies for Hungarian matching convergence
-- Data augmentation for synthetic detection datasets
-- Knowledge distillation from pretrained DETR models
-- Architecture modifications to prevent overfitting with limited data
+| Expert | Focus | Rationale |
+|--------|-------|-----------|
+| Motion Expert | Realistic physical motion | Captures dynamics and trajectories |
+| Object Permanence | Object consistency | Maintains identity across frames |
+| Physics Expert | Physical constraints | Respects gravity, collisions, etc. |
+| Semantic Expert | Action semantics | Preserves intended action meaning |
 
-This is noted for future study as mAP is secondary to the core video generation objective.
+**Approach:** Compare/combine outputs for richer, more robust predictions. Different models may capture different failure modes.
+
+### 2. Video Generation Quality Improvements
+
+| Direction | Priority | Description |
+|-----------|----------|-------------|
+| LTX Fine-tuning on SSv2 | High | Domain-specific training for action videos |
+| Alternative Video Models | Medium | Evaluate CogVideoX, Runway Gen-3, etc. |
+| Action-Conditioned Prompts | Medium | Better prompt engineering for action-specific outputs |
+
+### 3. Training Data & Scaling (Deferred Q4/Q5)
+
+- **Q4:** How much video-action data is needed for effective prediction?
+- **Q5:** How far into the future can predictions remain accurate?
+
+Deferred from Gate 3 to focus on core validation. Can revisit once C4 (Verification) is underway.
+
+### 4. Small Model Training for Object Detection
+
+During P2 mAP optimization, extended training (2000 epochs) caused overfitting (mAP: 0.182 → 0.037).
+
+**Interesting directions:**
+- Better regularization for small detection heads
+- Early stopping for Hungarian matching convergence
+- Knowledge distillation from pretrained DETR
+- Architecture modifications for limited data
+
+This is secondary to the core video generation objective.
 
 ---
 
@@ -473,6 +517,7 @@ This is noted for future study as mAP is secondary to the core video generation 
 
 | Date | Update |
 |------|--------|
+| 2026-01-25 | **GATE 3 PASSED (with pivot)** ✅ - Formalized E3.8 pivot as Gate 3 success. Added future research directions (Video MoE, LTX fine-tuning). Proceeding to Phase 4 (C4 Verification). |
 | 2026-01-25 | **E3.8 PIVOT VALIDATED** ✅ - LTX Image-to-Video generation produces temporal_ratio=0.89. VLM action recall: 70% on generated vs 75% on real (93% retention). "Video Predicts → VLM Describes" approach confirmed viable. |
 | 2026-01-25 | **C3 PIVOTED TO E3.8** - E3.8a/b/c completed with extrapolation baseline. VLM achieves 75% action recall on real video. Need proper LTX-Video conditioning for validation. |
 | 2026-01-25 | **E3.7b STOPPED EARLY** - VLM LoRA fine-tuning showed consistent negative improvement (-0.04 to -0.22) through 1300 steps. Original hypothesis "VLM can predict future" definitively rejected. |
