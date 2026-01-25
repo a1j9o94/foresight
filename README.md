@@ -155,10 +155,11 @@ uv run modal run infra/modal/app.py::run_experiment --experiment-id <id>
 uv run modal run infra/modal/app.py::run_experiment --experiment-id c1-vlm-latent-sufficiency --stub-mode
 ```
 
-## Live Demo
+## Demo
 
-- **Frontend:** https://foresight-demo-kappa.vercel.app
-- **Backend:** https://foresight-demo.fly.dev
+- **Video Walkthrough:** https://youtu.be/YJxDt_zCrUI
+- **Live Demo:** https://foresight-demo-kappa.vercel.app
+- **Backend API:** https://foresight-demo.fly.dev
 
 ---
 
