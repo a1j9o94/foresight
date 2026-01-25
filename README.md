@@ -95,19 +95,64 @@ We're releasing this as a benchmark to track when this approach becomes viable. 
 
 ---
 
+## Prerequisites
+
+To reproduce the experiments, you'll need accounts with these services:
+
+| Service | Purpose | Sign Up |
+|---------|---------|---------|
+| **Modal** | GPU compute for experiments (A100s) | [modal.com](https://modal.com) |
+| **Hugging Face** | Model downloads (Qwen2.5-VL, LTX-Video) | [huggingface.co](https://huggingface.co) |
+| **Weights & Biases** | Experiment tracking and logging | [wandb.ai](https://wandb.ai) |
+
+### Dataset: Something-Something v2
+
+The experiments use the **Something-Something v2** dataset for action prediction. This must be downloaded manually:
+
+1. Go to [Qualcomm AI Datasets](https://developer.qualcomm.com/software/ai-datasets/something-something)
+2. Request access and download the dataset
+3. Extract to `data/something-something-v2/`
+
+The dataset contains ~220K videos of humans performing 174 different actions (pushing, pulling, dropping, etc.).
+
+---
+
+## Setup
+
+```bash
+# 1. Clone and install dependencies
+git clone https://github.com/a1j9o94/foresight.git
+cd foresight
+uv sync
+
+# 2. Copy environment template
+cp .env.example .env
+# Edit .env with your API keys (WANDB_API_KEY, HF_TOKEN)
+
+# 3. Configure Modal secrets
+modal secret create wandb-api-key WANDB_API_KEY=<your-wandb-key>
+modal secret create huggingface-secret HF_TOKEN=<your-hf-token>
+
+# 4. Download models (first time only, ~20GB)
+uv run modal run infra/modal/app.py::download_models
+
+# 5. Verify setup
+uv run modal run infra/modal/app.py::smoke_test
+```
+
 ## Quick Start
 
 ```bash
-# Install dependencies
-uv sync
-
-# Run demo (shows the working parts)
+# Run demo locally (shows the working parts)
 cd demo/backend && uvicorn main:app --reload --port 8000
 cd demo/frontend && bun run dev
 # Open http://localhost:3000
 
-# Run experiments on Modal
+# Run experiments on Modal GPUs
 uv run modal run infra/modal/app.py::run_experiment --experiment-id <id>
+
+# Test experiment harness without GPU
+uv run modal run infra/modal/app.py::run_experiment --experiment-id c1-vlm-latent-sufficiency --stub-mode
 ```
 
 ## Live Demo
@@ -131,6 +176,20 @@ foresight/
 ├── packages/           # Modular code packages
 └── configs/            # Model/training configs
 ```
+
+## Tools & Models Used
+
+| Component | Tool | Notes |
+|-----------|------|-------|
+| Vision-Language Model | [Qwen2.5-VL-7B](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) | Frozen, used for encoding |
+| Visual Encoder | [DINOv2-ViT-L](https://huggingface.co/facebook/dinov2-large) | Spatial feature extraction |
+| Video Generation | [LTX-Video](https://huggingface.co/Lightricks/LTX-Video) | Real-time video synthesis |
+| Perceptual Metric | [LPIPS](https://github.com/richzhang/PerceptualSimilarity) | Learned perceptual similarity |
+| GPU Compute | [Modal](https://modal.com) | A100-80GB for experiments |
+| Experiment Tracking | [Weights & Biases](https://wandb.ai) | Metrics and artifacts |
+| Package Manager | [uv](https://github.com/astral-sh/uv) | Fast Python packaging |
+| Frontend | React + TypeScript + Bun | Demo UI |
+| Backend | FastAPI | Demo API |
 
 ## Documentation
 
