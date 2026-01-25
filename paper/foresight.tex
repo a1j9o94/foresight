@@ -1,0 +1,429 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{natbib}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{Foresight: Can Video Prediction Ground Language Model Reasoning?\\
+\large A Negative Result and Benchmark Proposal}
+
+\author{
+  Anonymous Authors\\
+  \texttt{foresight-benchmark@example.com}
+}
+
+\date{January 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We investigate whether vision-language models (VLMs) can benefit from generating pixel-level video predictions as part of their reasoning process. Our hypothesis: an AI that can ``see'' predicted outcomes through video generation will make better decisions than one reasoning purely in text or latent space. Through systematic experimentation across four research phases, we find that \textbf{(1)} VLMs cannot predict future states in their latent space, \textbf{(2)} video models can generate plausible continuations that VLMs understand, but \textbf{(3)} pixel-level verification (LPIPS) does not correlate with semantic correctness, preventing effective self-correction loops. We release our experimental framework as a benchmark for evaluating future video-language systems, proposing that the ability to predict and verify visual futures may be a key capability gap in current AI systems worth tracking over time.
+\end{abstract}
+
+\section{Introduction}
+
+The remarkable progress in large language models (LLMs) has led to systems capable of sophisticated reasoning across many domains. However, these models reason primarily through text, lacking the ability to ``imagine'' and visualize outcomes before committing to predictions. Humans frequently engage in mental simulation---imagining what will happen if we take an action---as a core component of planning and decision-making.
+
+This paper investigates a natural question: \textbf{Can AI systems benefit from generating pixel-level video predictions as part of their reasoning process?} We term this approach \textit{Generative Latent Prediction} (GLP), combining the semantic understanding of vision-language models with the temporal modeling capabilities of video generation systems.
+
+Our hypothesis was that a system which generates video predictions and compares them against actual outcomes could:
+\begin{enumerate}
+    \item Detect when its predictions violate physical constraints (visible as artifacts)
+    \item Self-correct through verification loops
+    \item Achieve higher accuracy than pure text/latent reasoning
+\end{enumerate}
+
+This approach differs fundamentally from latent-only prediction methods like V-JEPA \citep{bardes2024vjepa}, which predict in learned representation spaces without generating interpretable pixels. Our bet was that pixel-level grounding would provide a richer error signal.
+
+\textbf{Summary of Results:} After extensive experimentation, we find that current models are not capable of this form of grounded reasoning:
+\begin{itemize}
+    \item VLMs cannot predict future states from their latent representations (7 architectural variations tested, all failed)
+    \item Video models can generate plausible continuations, and VLMs can understand them (93\% retention of action understanding)
+    \item However, perceptual similarity metrics (LPIPS) do not correlate with semantic correctness ($r=0.106$, AUROC=0.386)
+    \item Verification loops achieve only 7.4\% correction rate (below 15\% threshold)
+\end{itemize}
+
+We release our experimental framework and propose it as a \textbf{benchmark} for tracking progress in video-language reasoning capabilities over time.
+
+\section{Related Work}
+
+\subsection{Vision-Language Models}
+
+Recent VLMs like Qwen2-VL \citep{wang2024qwen2vl}, LLaVA \citep{liu2023llava}, and GPT-4V \citep{openai2023gpt4v} achieve strong performance on visual understanding tasks. These models encode images into latent representations that are processed alongside text. However, their internal representations are optimized for understanding, not prediction---a distinction our experiments make explicit.
+
+\subsection{Video Generation Models}
+
+Diffusion-based video models including Stable Video Diffusion \citep{blattmann2023stablevideo}, LTX-Video \citep{lightricks2024ltx}, and Sora \citep{videoworldsimulators2024} can generate temporally coherent videos. These models excel at producing plausible visual continuations but are not designed to predict \textit{what will happen} in a semantically meaningful way for downstream reasoning.
+
+\subsection{World Models and Latent Prediction}
+
+World models \citep{ha2018worldmodels, hafner2020dreamer} learn to predict future states in latent space for reinforcement learning. V-JEPA \citep{bardes2024vjepa} extends this to self-supervised learning, predicting masked video regions in latent space without pixel generation. Our work investigates whether pixel-level prediction provides advantages over latent-only approaches.
+
+\subsection{Self-Verification in Language Models}
+
+Self-consistency \citep{wang2023selfconsistency} improves LLM reasoning by sampling multiple reasoning paths and selecting the most consistent answer. Verification has proven valuable in code generation (execute and check) and mathematical reasoning (verify answer satisfies constraints). We investigate whether pixel-level verification can provide similar benefits for visual reasoning.
+
+\subsection{Perceptual Similarity Metrics}
+
+LPIPS \citep{zhang2018lpips} measures perceptual similarity using deep network features, correlating well with human judgments. FVD \citep{unterthiner2019fvd} extends this to video using I3D features. We investigate whether these metrics can serve as verification signals for prediction correctness.
+
+\section{Method}
+
+\subsection{System Architecture}
+
+Our Foresight system combines three components:
+
+\begin{enumerate}
+    \item \textbf{Hybrid Encoder:} DINOv2-ViT-L \citep{oquab2024dinov2} for spatial features + Qwen2.5-VL-7B for semantic understanding, fused via cross-attention
+    \item \textbf{Video Generator:} LTX-Video for image-to-video generation
+    \item \textbf{Verification Module:} LPIPS-based comparison between predicted and actual outcomes
+\end{enumerate}
+
+\subsection{Research Phases}
+
+We structured our investigation into four phases, each with explicit success criteria:
+
+\textbf{Phase 1: Reconstruction.} Can VLM latents support video reconstruction? We found VLM latents preserve semantics but lose spatial precision (IoU=0.559 $<$ 0.6 threshold). This led to the hybrid encoder design combining DINOv2 spatial features with VLM semantics.
+
+\textbf{Phase 2: Bridging.} Can we efficiently connect VLM to video decoder? A 10M parameter adapter achieved better quality than a 100M adapter (param\_efficiency=1.165), validating efficient bridging.
+
+\textbf{Phase 3: Prediction.} Can VLMs predict future states? Seven architectural variations (single-frame, multi-frame, temporal transformer, contrastive learning, pixel feedback with frozen/fine-tuned VLM) all failed to beat a copy baseline. This led to a ``Video Predicts $\rightarrow$ VLM Describes'' pivot.
+
+\textbf{Phase 4: Verification.} Does pixel verification improve accuracy? This is the focus of our main results.
+
+\subsection{Datasets}
+
+We use Something-Something v2 \citep{goyal2017something} (220,847 videos, 174 fine-grained action classes) as our primary evaluation dataset, as it requires understanding action semantics rather than just object recognition.
+
+\section{Experiments}
+
+\subsection{Phase 3: VLM Cannot Predict Future States}
+
+\begin{table}[h]
+\centering
+\caption{VLM prediction experiments. All architectures fail to beat the copy baseline.}
+\label{tab:c3_results}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Experiment & Architecture & cos\_sim & Copy & $\Delta$ \\
+\midrule
+E3.2 & Single-frame & 0.941 & 0.979 & -0.038 \\
+E3.4 & Multi-frame (8) & 0.930 & 0.975 & -0.045 \\
+E3.5 & Temporal Transformer & 0.930 & 0.975 & -0.045 \\
+E3.6 & Contrastive Loss & 0.477 & 0.860 & -0.384 \\
+E3.7a & Pixel Feedback (frozen) & 0.209* & 0.070* & -0.139 \\
+E3.7b & Pixel Feedback (LoRA) & $\sim$0.17* & $\sim$0.07* & negative \\
+\bottomrule
+\multicolumn{5}{l}{\small *L1 pixel loss (lower is better); all others cosine similarity (higher is better)}
+\end{tabular}
+\end{table}
+
+All architectures converge to approximately 0.93 cosine similarity regardless of temporal context or modeling approach. This strongly suggests VLM latent spaces do not encode future-predictive information.
+
+\textbf{Pivot: Video Predicts $\rightarrow$ VLM Describes.} We pivoted to using video models for prediction and VLMs for understanding. LTX-Video generates future frames; VLM describes the generated content. Results:
+\begin{itemize}
+    \item Temporal coherence ratio: 0.89 (vs 0.37 with simple extrapolation)
+    \item VLM action recall on generated video: 70\% (vs 75\% on real video)
+    \item Retention rate: 93\%---VLM understands generated content almost as well as real video
+\end{itemize}
+
+\subsection{Phase 4: Pixel Verification Does Not Work}
+
+With working video generation and VLM understanding, we tested whether pixel-level verification enables self-correction.
+
+\subsubsection{E4.1: Correlation Study}
+
+\textbf{Question:} Does LPIPS error predict whether predictions are semantically correct?
+
+\begin{table}[h]
+\centering
+\caption{LPIPS-Correctness correlation results.}
+\label{tab:e41_results}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Metric & Achieved & Target \\
+\midrule
+Point-biserial correlation & 0.106 & $>$ 0.30 \\
+p-value & 0.58 & $<$ 0.05 \\
+AUROC & 0.386 & $>$ 0.65 \\
+LPIPS gap (incorrect - correct) & -0.05 & $>$ 0.08 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key finding:} LPIPS does not distinguish correct from incorrect predictions. The correlation is not significant ($p=0.58$), and AUROC of 0.386 is \textit{worse than random}. Surprisingly, incorrect predictions had \textit{lower} LPIPS than correct ones.
+
+\subsubsection{E4.2: Calibration Study}
+
+\textbf{Question:} Does model uncertainty correlate with prediction error?
+
+\begin{table}[h]
+\centering
+\caption{Calibration study results.}
+\label{tab:e42_results}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Metric & Achieved & Target \\
+\midrule
+Uncertainty-Error correlation & 0.582 & $>$ 0.40 \\
+p-value & 0.0007 & $<$ 0.05 \\
+Expected Calibration Error (ECE) & 0.190 & $<$ 0.15 \\
+Reliability $R^2$ & 0.550 & $>$ 0.60 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+While uncertainty correlates significantly with error ($r=0.582$, $p<0.001$), the model is poorly calibrated (ECE=0.190 $>$ 0.15 threshold). Uncertainty does not reliably indicate when predictions are wrong.
+
+\subsubsection{E4.3: Verification Loop}
+
+\textbf{Question:} Can feedback enable self-correction?
+
+\begin{table}[h]
+\centering
+\caption{Verification loop results by feedback type.}
+\label{tab:e43_results}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Feedback Type & V1 Acc & V2 Acc & Correction Rate \\
+\midrule
+Binary & 10.0\% & 3.3\% & 0.0\% \\
+LPIPS score & 10.0\% & 6.7\% & 3.7\% \\
+VLM description & 10.0\% & 16.7\% & \textbf{7.4\%} \\
+\midrule
+Target & - & - & $>$ 15\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Even the best feedback type (VLM description) achieves only 7.4\% correction rate, well below the 15\% threshold needed to justify the computational cost of verification loops.
+
+\section{Discussion}
+
+\subsection{Why Did Pixel Verification Fail?}
+
+Our results suggest a fundamental disconnect between perceptual similarity and semantic correctness:
+
+\begin{enumerate}
+    \item \textbf{Perceptually similar but semantically different:} Two videos can look similar at the pixel level while depicting different actions (e.g., pushing left vs right on a symmetric object).
+
+    \item \textbf{Perceptually different but semantically equivalent:} The same action can produce visually different results due to irrelevant variation (lighting, camera angle, object texture).
+
+    \item \textbf{LPIPS captures the wrong signal:} LPIPS is trained on human perceptual judgments, not task relevance. It may be sensitive to visual details that don't matter for semantic understanding.
+\end{enumerate}
+
+\subsection{What Would Need to Change?}
+
+For video-grounded reasoning to work, we would need:
+
+\begin{enumerate}
+    \item \textbf{Task-specific verification metrics:} Train perceptual metrics on task-relevant differences rather than general visual similarity.
+
+    \item \textbf{Better video models:} Current models generate plausible but not necessarily accurate predictions. They need to actually predict what will happen, not just what could happen.
+
+    \item \textbf{Semantic verification:} VLM-based comparison (7.4\% correction) outperformed LPIPS (3.7\%), suggesting semantic rather than perceptual verification may be more promising.
+\end{enumerate}
+
+\subsection{Positive Findings}
+
+Despite the negative overall result, we made several useful discoveries:
+
+\begin{itemize}
+    \item \textbf{Hybrid encoding works:} DINOv2 + VLM fusion achieves spatial IoU=0.837, solving the spatial information loss problem in VLM-only approaches.
+
+    \item \textbf{VLMs understand generated video:} 93\% retention of action understanding on LTX-Video outputs enables ``Video Predicts $\rightarrow$ VLM Describes'' workflows.
+
+    \item \textbf{Small adapters suffice:} 10M parameter adapter outperforms 100M, suggesting efficient bridging is possible.
+\end{itemize}
+
+\section{Benchmark Proposal: VideoReason}
+
+We propose releasing our experimental framework as a benchmark for tracking progress in video-language reasoning:
+
+\subsection{Tasks}
+
+\begin{enumerate}
+    \item \textbf{Future Prediction:} Given context frames and action description, predict the next $N$ frames.
+
+    \item \textbf{Action Understanding:} Classify actions in both real and generated videos; measure retention rate.
+
+    \item \textbf{Verification Correlation:} Measure correlation between perceptual metrics and semantic correctness.
+
+    \item \textbf{Self-Correction:} Measure correction rate in verification loops with various feedback types.
+\end{enumerate}
+
+\subsection{Metrics}
+
+\begin{itemize}
+    \item \textbf{Temporal Coherence Ratio:} How realistic is generated motion?
+    \item \textbf{VLM Retention Rate:} How well does VLM understand generated vs real video?
+    \item \textbf{Verification AUROC:} Can perceptual metrics distinguish correct/incorrect?
+    \item \textbf{Correction Rate:} Does verification enable self-improvement?
+\end{itemize}
+
+\subsection{Why Track This Over Time?}
+
+Video generation models are improving rapidly. The capabilities we found lacking in 2026 may emerge in future systems. A standardized benchmark allows:
+
+\begin{enumerate}
+    \item Tracking progress toward video-grounded reasoning
+    \item Comparing different video-language architectures
+    \item Identifying when the approach becomes viable
+\end{enumerate}
+
+\section{Conclusion}
+
+We investigated whether AI systems can benefit from generating pixel-level video predictions as part of their reasoning process. Our systematic experiments found that:
+
+\begin{enumerate}
+    \item VLMs cannot predict future states from their latent representations
+    \item Video models can generate plausible continuations that VLMs understand
+    \item However, perceptual similarity does not correlate with semantic correctness
+    \item Verification loops do not enable effective self-correction
+\end{enumerate}
+
+This negative result is valuable: it establishes that pixel-level verification, at least with current models and metrics, does not provide the error signal needed for grounded visual reasoning. The disconnect between perceptual and semantic similarity appears fundamental.
+
+We release our framework as a benchmark for future video-language systems. The ability to predict and verify visual futures may be a key capability gap worth tracking as models improve. We encourage the community to revisit these experiments as new video generation and vision-language models emerge.
+
+\section*{Acknowledgments}
+
+We thank the developers of Qwen2-VL, LTX-Video, DINOv2, and the Something-Something v2 dataset for making their work available.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{20}
+
+\bibitem[Bardes et al.(2024)]{bardes2024vjepa}
+Bardes, A., Garrido, Q., Ponce, J., Chen, X., Rabbat, M., LeCun, Y., Assran, M., and Ballas, N. (2024).
+\newblock V-JEPA: Latent video prediction for visual representation learning.
+\newblock \textit{arXiv preprint arXiv:2402.04627}.
+
+\bibitem[Blattmann et al.(2023)]{blattmann2023stablevideo}
+Blattmann, A., Dockhorn, T., Kulal, S., Mendelevitch, D., Kilian, M., Lorber, D., Levi, Y., English, Z., Voleti, V., Letts, A., et al. (2023).
+\newblock Stable video diffusion: Scaling latent video diffusion models to large datasets.
+\newblock \textit{arXiv preprint arXiv:2311.15127}.
+
+\bibitem[Goyal et al.(2017)]{goyal2017something}
+Goyal, R., Ebrahimi Kahou, S., Michalski, V., Materzynska, J., Westphal, S., Kim, H., Haenel, V., Fruend, I., Yianilos, P., Mueller-Freitag, M., et al. (2017).
+\newblock The ``something something'' video database for learning and evaluating visual common sense.
+\newblock In \textit{ICCV}.
+
+\bibitem[Guo et al.(2017)]{guo2017calibration}
+Guo, C., Pleiss, G., Sun, Y., and Weinberger, K. Q. (2017).
+\newblock On calibration of modern neural networks.
+\newblock In \textit{ICML}.
+
+\bibitem[Ha and Schmidhuber(2018)]{ha2018worldmodels}
+Ha, D. and Schmidhuber, J. (2018).
+\newblock World models.
+\newblock \textit{arXiv preprint arXiv:1803.10122}.
+
+\bibitem[Hafner et al.(2020)]{hafner2020dreamer}
+Hafner, D., Lillicrap, T., Ba, J., and Norouzi, M. (2020).
+\newblock Dream to control: Learning behaviors by latent imagination.
+\newblock In \textit{ICLR}.
+
+\bibitem[Lightricks(2024)]{lightricks2024ltx}
+Lightricks (2024).
+\newblock LTX-Video: Real-time video generation.
+\newblock \url{https://github.com/Lightricks/LTX-Video}.
+
+\bibitem[Liu et al.(2023)]{liu2023llava}
+Liu, H., Li, C., Wu, Q., and Lee, Y. J. (2023).
+\newblock Visual instruction tuning.
+\newblock In \textit{NeurIPS}.
+
+\bibitem[OpenAI(2023)]{openai2023gpt4v}
+OpenAI (2023).
+\newblock GPT-4V(ision) system card.
+\newblock Technical report.
+
+\bibitem[Oquab et al.(2024)]{oquab2024dinov2}
+Oquab, M., Darcet, T., Moutakanni, T., Vo, H., Szafraniec, M., Khalidov, V., Fernandez, P., Haziza, D., Massa, F., El-Nouby, A., et al. (2024).
+\newblock DINOv2: Learning robust visual features without supervision.
+\newblock \textit{TMLR}.
+
+\bibitem[Sora Team(2024)]{videoworldsimulators2024}
+Sora Team (2024).
+\newblock Video generation models as world simulators.
+\newblock Technical report, OpenAI.
+
+\bibitem[Unterthiner et al.(2019)]{unterthiner2019fvd}
+Unterthiner, T., van Steenkiste, S., Kurach, K., Marinier, R., Michalski, M., and Gelly, S. (2019).
+\newblock FVD: A new metric for video generation.
+\newblock \textit{arXiv preprint}.
+
+\bibitem[Wang et al.(2023)]{wang2023selfconsistency}
+Wang, X., Wei, J., Schuurmans, D., Le, Q., Chi, E., Narang, S., Chowdhery, A., and Zhou, D. (2023).
+\newblock Self-consistency improves chain of thought reasoning in language models.
+\newblock In \textit{ICLR}.
+
+\bibitem[Wang et al.(2024)]{wang2024qwen2vl}
+Wang, P., Bai, S., Tan, S., Wang, S., Fan, Z., Bai, J., Chen, K., Liu, X., Wang, J., Ge, W., et al. (2024).
+\newblock Qwen2-VL: Enhancing vision-language model's perception of the world at any resolution.
+\newblock \textit{arXiv preprint arXiv:2409.12191}.
+
+\bibitem[Zhang et al.(2018)]{zhang2018lpips}
+Zhang, R., Isola, P., Efros, A. A., Shechtman, E., and Wang, O. (2018).
+\newblock The unreasonable effectiveness of deep features as a perceptual metric.
+\newblock In \textit{CVPR}.
+
+\end{thebibliography}
+
+\appendix
+
+\section{Detailed Experiment Results}
+
+\subsection{Phase 1: Reconstruction Quality}
+
+\begin{table}[h]
+\centering
+\caption{Hybrid encoder ablation results.}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Configuration & Spatial IoU & LPIPS & mAP@0.5 & Latency \\
+\midrule
+VLM only & 0.559 & 0.264 & 0.001 & baseline \\
+DINOv2-ViT-B & 0.742 & 0.198 & 0.095 & +24\% \\
+DINOv2-ViT-L & \textbf{0.837} & \textbf{0.162} & 0.182 & +32\% \\
+DINOv2-ViT-G & 0.851 & 0.155 & 0.201 & +68\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Phase 2: Adapter Efficiency}
+
+\begin{table}[h]
+\centering
+\caption{Adapter scaling comparison.}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Adapter Size & LPIPS & Training Time & Param Efficiency \\
+\midrule
+10M & 0.289 & 0.32x & \textbf{1.165} \\
+50M & 0.312 & 0.65x & 0.952 \\
+100M & 0.346 & 1.00x & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Infrastructure}
+
+All experiments were run on Modal cloud infrastructure using NVIDIA A100-80GB GPUs. Total compute: approximately 200 GPU-hours across all experiments.
+
+\section{Benchmark Code}
+
+Code and evaluation scripts will be released at: \url{https://github.com/[anonymous]/foresight-benchmark}
+
+\end{document}
