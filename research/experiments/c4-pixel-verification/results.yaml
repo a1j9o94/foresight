@@ -1,0 +1,129 @@
+# C4: Pixel Verification Improves Accuracy
+# Experiment completed: 2026-01-25
+
+experiment_id: c4-pixel-verification
+status: completed
+recommendation: pivot
+
+# Success criteria from research_plan.yaml
+success_criteria:
+  correlation: "> 0.35"
+  verification_improvement: "> 10%"
+  correction_rate: "> 25%"
+
+# Overall assessment
+assessment:
+  success_criteria_met: false
+  confidence: high
+  notes: |
+    Pixel verification (LPIPS) does not reliably predict semantic correctness.
+    Null hypothesis was NOT disproven - verification loops do not improve accuracy
+    sufficiently to justify computational cost.
+
+# Sub-experiment results
+results:
+  experiments:
+    e4_1_correlation_study:
+      status: completed
+      metrics:
+        # Primary metrics
+        correlation: 0.106
+        correlation_raw: 0.106
+        p_value: 0.58
+        auroc: 0.386
+        lpips_gap: -0.05
+        # Distribution stats
+        mean_lpips_correct: 0.503
+        mean_lpips_incorrect: 0.453
+        n_samples: 50
+        n_correct: 6
+        n_incorrect: 44
+      passed: false
+      finding: |
+        LPIPS does NOT distinguish correct from incorrect predictions.
+        Correlation r=0.106 (not significant, p=0.58). AUROC=0.386 (worse than random).
+        Surprisingly, incorrect predictions have LOWER LPIPS than correct ones (gap=-0.05).
+      artifacts:
+        - artifacts/e4_1_correlation_scatter.png
+        - artifacts/e4_1_roc_curve.png
+        - artifacts/e4_1_lpips_distribution.png
+
+    e4_2_calibration_study:
+      status: completed
+      metrics:
+        uncertainty_error_correlation: 0.582
+        correlation_raw: 0.582
+        p_value: 0.0007
+        ece: 0.190
+        reliability_r_squared: 0.550
+        n_samples: 30
+        mc_samples_per_prediction: 5
+      passed: false
+      finding: |
+        Model is POORLY CALIBRATED. While uncertainty-error correlation is significant
+        (r=0.582, p=0.0007), ECE=0.190 exceeds 0.15 threshold and R²=0.550 is below 0.60.
+        Uncertainty does not reliably predict error magnitude.
+      artifacts:
+        - artifacts/e4_2_calibration_plot.png
+        - artifacts/e4_2_uncertainty_scatter.png
+
+    e4_3_verification_loop:
+      status: completed
+      metrics:
+        # Best condition: VLM feedback
+        accuracy_improvement: 0.067
+        correction_rate: 0.074
+        lpips_improvement_rate: 0.30
+        v1_accuracy: 0.10
+        v2_accuracy: 0.167
+        best_condition: vlm
+        n_samples: 30
+        # Per-condition results
+        conditions:
+          binary:
+            v1_accuracy: 0.10
+            v2_accuracy: 0.033
+            correction_rate: 0.0
+          lpips:
+            v1_accuracy: 0.10
+            v2_accuracy: 0.067
+            correction_rate: 0.037
+          vlm:
+            v1_accuracy: 0.10
+            v2_accuracy: 0.167
+            correction_rate: 0.074
+      passed: false
+      finding: |
+        VERIFICATION LOOP INSUFFICIENT. Best condition (VLM feedback) achieved only
+        7.4% correction rate (threshold: 15%). LPIPS improvement rate 30% (threshold: 55%).
+        Verification does not enable effective self-correction.
+      artifacts:
+        - artifacts/e4_3_feedback_comparison.png
+        - artifacts/e4_3_correction_analysis.png
+
+# Pivot options identified during experiments
+pivot_options:
+  - name: Verification for Filtering
+    description: Use LPIPS to flag uncertain predictions for human review, not self-correction
+    priority: high
+    rationale: Lower bar than correction - just need to detect uncertainty
+
+  - name: Training-time Verification
+    description: Include verification loss during training, not inference
+    priority: medium
+    rationale: Model learns to make verification-friendly predictions
+
+  - name: Ensemble Selection
+    description: Generate multiple predictions, use VLM to select best
+    priority: high
+    rationale: VLM feedback showed better results than LPIPS
+
+  - name: VLM-based Verification
+    description: Use VLM to compare predicted vs actual semantically
+    priority: medium
+    rationale: VLM feedback achieved 7.4% vs LPIPS 3.7% correction rate
+
+# W&B links
+wandb:
+  run_url: https://wandb.ai/a1j9o94/foresight/runs/kh7ctrjt
+  project_url: https://wandb.ai/a1j9o94/foresight

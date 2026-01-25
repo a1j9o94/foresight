@@ -6,8 +6,8 @@ High-level summary of Foresight experiment results. For detailed findings, see i
 
 ## Project Status
 
-**Current Phase:** Phase 3 - Future Prediction → **E3.8 VALIDATED** ✅
-**Overall Progress:** Gate 1 PASSED ✅ | Gate 2 PASSED ✅ | **Demo LIVE** 🚀 | **E3.8 PIVOT VALIDATED** ✅
+**Current Phase:** Phase 4 - Verification → **C4 PIVOT REQUIRED** ❌
+**Overall Progress:** Gate 1 PASSED ✅ | Gate 2 PASSED ✅ | Gate 3 PASSED ✅ | **C4 PIVOT** ❌
 
 **Key Achievements:**
 - **Gate 1:** Hybrid Encoder (P2) validated - spatial_iou=0.837, lpips=0.162
@@ -229,6 +229,63 @@ The complete inference pipeline is now live:
 
 ---
 
+## Phase 4: Does pixel verification improve accuracy?
+
+### [C4: Pixel Verification](experiments/c4-pixel-verification/results.yaml) - PIVOT REQUIRED ❌
+
+**Question:** Does comparing predicted video to actual outcomes provide a signal that improves prediction accuracy?
+
+**Answer:** No. LPIPS does not reliably correlate with semantic correctness, and verification loops do not meet improvement thresholds.
+
+| Metric | Achieved | Target | Result |
+|--------|----------|--------|--------|
+| Point-biserial correlation | 0.106 | > 0.30 | ❌ Fail |
+| AUROC (LPIPS as classifier) | 0.386 | > 0.65 | ❌ Fail |
+| ECE (calibration) | 0.190 | < 0.15 | ❌ Fail |
+| Reliability R² | 0.550 | > 0.60 | ❌ Fail |
+| Correction rate | 7.4% | > 15% | ❌ Fail |
+| LPIPS improvement rate | 30.0% | > 55% | ❌ Fail |
+
+**Sub-experiments (2026-01-25):**
+
+**E4.1: Correlation Study (LPIPS vs Correctness)**
+- Hypothesis: Higher LPIPS error indicates incorrect predictions
+- Result: **r=0.106, p=0.58** (not significant), AUROC=0.386 (worse than random)
+- LPIPS gap: -0.05 (incorrect predictions have LOWER LPIPS than correct!)
+- Conclusion: LPIPS does NOT distinguish correct from incorrect predictions
+
+**E4.2: Calibration Study (Uncertainty vs Error)**
+- Hypothesis: Model uncertainty correlates with prediction error
+- Result: **r=0.582, p=0.0007** (significant), but ECE=0.190 (poorly calibrated)
+- Reliability R²=0.550 (below 0.60 threshold)
+- Conclusion: Model is POORLY CALIBRATED - uncertainty doesn't reliably predict error
+
+**E4.3: Single Verification Loop (Feedback Improves Accuracy?)**
+- Hypothesis: Providing feedback enables self-correction
+- Conditions tested: binary, lpips, vlm feedback
+- Best result: **VLM feedback** achieved 7.4% correction rate (V1=10% → V2=16.7%)
+- Conclusion: INSUFFICIENT - correction rate 7.4% < 15% threshold
+
+**Critical Finding:** The null hypothesis was NOT disproven. Pixel verification (LPIPS) cannot reliably:
+1. Detect when predictions are wrong (correlation too weak)
+2. Enable self-correction (correction rate too low)
+3. Justify the computational cost of verification loops
+
+**Pivot Options (from experiment findings):**
+
+| Pivot | Description | Priority |
+|-------|-------------|----------|
+| **Filtering** | Use verification to flag uncertain predictions, not correct them | High |
+| **Training-time** | Include verification loss during training, not inference | Medium |
+| **Ensemble Selection** | Generate multiple predictions, use VLM to select best | High |
+| **VLM-based Verification** | VLM feedback showed better (7.4% vs 3.7%) than LPIPS | Medium |
+
+**Decision:** PIVOT required. Pixel verification does not work as originally hypothesized. Recommend Pivot to verification-for-filtering or ensemble selection approaches.
+
+→ [Full details](experiments/c4-pixel-verification/results.yaml)
+
+---
+
 ## Phase 3: Can the VLM predict future states?
 
 ### [C3: Future Prediction](experiments/c3-future-prediction/results.yaml) - ARCHITECTURE INVESTIGATION COMPLETE ❌
@@ -354,6 +411,23 @@ After evaluating options, selected **Option 4 + Option 2**: Accept VLM limitatio
 ---
 
 ## Decision Gates
+
+### Gate 4: Verification
+**Status:** ❌ PIVOT REQUIRED
+
+| Experiment | Status | Recommendation |
+|------------|--------|----------------|
+| **C4 - Pixel Verification** | ❌ Complete | **PIVOT** - LPIPS doesn't predict correctness |
+
+**Gate 4 Assessment:**
+- ❌ Correlation: r=0.106 (< 0.30 threshold)
+- ❌ AUROC: 0.386 (worse than random)
+- ❌ Calibration: ECE=0.190 (> 0.15 threshold)
+- ❌ Correction rate: 7.4% (< 15% threshold)
+
+**Decision:** PIVOT to verification-for-filtering or ensemble selection approaches. Pixel verification does not enable self-correction as hypothesized.
+
+---
 
 ### Gate 3: Prediction (Pivot)
 **Status:** ✅ PASSED (with pivot)
@@ -517,6 +591,7 @@ This is secondary to the core video generation objective.
 
 | Date | Update |
 |------|--------|
+| 2026-01-25 | **C4 PIXEL VERIFICATION - PIVOT REQUIRED** ❌ - E4.1 (correlation): r=0.106, AUROC=0.386; E4.2 (calibration): ECE=0.190; E4.3 (verification loop): correction_rate=7.4%. LPIPS does not predict semantic correctness. Recommend pivot to filtering or ensemble selection. |
 | 2026-01-25 | **GATE 3 PASSED (with pivot)** ✅ - Formalized E3.8 pivot as Gate 3 success. Added future research directions (Video MoE, LTX fine-tuning). Proceeding to Phase 4 (C4 Verification). |
 | 2026-01-25 | **E3.8 PIVOT VALIDATED** ✅ - LTX Image-to-Video generation produces temporal_ratio=0.89. VLM action recall: 70% on generated vs 75% on real (93% retention). "Video Predicts → VLM Describes" approach confirmed viable. |
 | 2026-01-25 | **C3 PIVOTED TO E3.8** - E3.8a/b/c completed with extrapolation baseline. VLM achieves 75% action recall on real video. Need proper LTX-Video conditioning for validation. |
